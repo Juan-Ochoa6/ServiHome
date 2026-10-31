@@ -1,27 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import './App.css';
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
+import RutaProtegida from './auth/RutaProtegida.jsx';
 import Inicio from './pages/Inicio.jsx';
 import Servicios from './pages/Servicios.jsx';
 import Profesionales from './pages/Profesionales.jsx';
 import PerfilProfesional from './pages/PerfilProfesional.jsx';
 import Solicitudes from './pages/Solicitudes.jsx';
 import NuevaSolicitud from './pages/NuevaSolicitud.jsx';
+import Login from './pages/Login.jsx';
+import Registro from './pages/Registro.jsx';
 
 function App() {
-  const [solicitudes, setSolicitudes] = useState([]);
   const { pathname } = useLocation();
 
   // Al cambiar de ventana, vuelve al inicio de la página
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [pathname]);
-
-  function agregarSolicitud(solicitud) {
-    setSolicitudes((actuales) => [solicitud, ...actuales]);
-  }
 
   return (
     <div className="pagina">
@@ -33,10 +31,23 @@ function App() {
           <Route path="/servicios" element={<Servicios />} />
           <Route path="/profesionales" element={<Profesionales />} />
           <Route path="/profesionales/:id" element={<PerfilProfesional />} />
-          <Route path="/solicitudes" element={<Solicitudes solicitudes={solicitudes} />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/registro" element={<Registro />} />
+          <Route
+            path="/solicitudes"
+            element={
+              <RutaProtegida>
+                <Solicitudes />
+              </RutaProtegida>
+            }
+          />
           <Route
             path="/solicitudes/nueva/:id"
-            element={<NuevaSolicitud agregarSolicitud={agregarSolicitud} />}
+            element={
+              <RutaProtegida>
+                <NuevaSolicitud />
+              </RutaProtegida>
+            }
           />
           <Route
             path="*"

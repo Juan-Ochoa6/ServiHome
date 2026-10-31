@@ -238,3 +238,77 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 /* ===== Icono del buscador ===== */
 .buscador > span { display: flex; align-items: center; }
 .icono-buscar { display: block; width: 22px; height: 22px; object-fit: contain; }
+/* ===== Autenticación ===== */
+.formulario-auth { max-width: 460px; }
+.campo-formulario select {
+  width: 100%; padding: 13px 14px; border: 1px solid #d7e3da; border-radius: 12px;
+  background: #fff; color: #20332c;
+}
+.campo-formulario select:focus { outline: none; border-color: #39845a; box-shadow: 0 0 0 3px #39845a20; }
+.error-campo { color: #b3261e; font-size: .84rem; }
+
+.mensaje { margin: 0; padding: 12px 14px; border-radius: 10px; font-size: .9rem; line-height: 1.5; }
+.mensaje-error { background: #fdecea; color: #8c1d18; }
+.mensaje-exito { background: #e3f4e7; color: #1f6b43; }
+.cargando { padding: 24px; color: #65736b; text-align: center; }
+
+.qr { display: block; width: 220px; max-width: 100%; margin: 16px auto; border: 1px solid #e3ebe5; border-radius: 12px; }
+.codigos-recuperacion { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 20px 0; padding: 0; list-style: none; }
+.codigos-recuperacion li {
+  padding: 10px 12px; border: 1px dashed #b7d5c0; border-radius: 10px; background: #f8fbf8;
+  font-family: ui-monospace, Consolas, monospace; font-size: .85rem; overflow-wrap: anywhere;
+}
+
+.enlace-auth { margin: 4px 0 0; color: #65736b; font-size: .9rem; text-align: center; }
+.enlace-auth a { color: #23865b; font-weight: 700; }
+.formulario-auth .boton-secundario { width: 100%; min-height: 44px; }
+
+.navbar-sesion { display: flex; align-items: center; gap: 12px; }
+.navbar-sesion span { color: #56645d; font-size: .88rem; font-weight: 600; }
+@media (max-width: 600px) {
+  .navbar-sesion span { display: none; }
+}
+/* ===== Catálogo real ===== */
+.icono-categoria-img { width: 70%; height: 70%; object-fit: contain; }
+.profesional-avatar .icono-categoria-img { width: 72px; height: 72px; }
+.perfil-avatar .icono-categoria-img { width: 58px; height: 58px; }
+
+.bloque-error { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
+.filtros-activos { margin-top: 14px; }
+
+.encabezado-servicios { margin-top: 56px; }
+.servicios-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.tarjeta-servicio {
+  display: flex; flex-direction: column; gap: 10px; padding: 22px;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+  box-shadow: 0 5px 18px #23462d0b;
+}
+.tarjeta-servicio h3 { margin: 0; color: #23372a; font-size: 1.08rem; }
+.tarjeta-servicio p { flex: 1; margin: 0; color: #718078; font-size: .9rem; line-height: 1.7; }
+.servicio-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Perfil: servicios que ofrece */
+.titulo-ofertas { align-self: flex-start; margin: 18px 0 0; color: #24392b; font-size: 1.05rem; }
+.ofertas-lista { display: grid; gap: 12px; width: 100%; margin-top: 4px; text-align: left; }
+.oferta-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 14px; border: 1px solid #e3ebe5; border-radius: 12px; background: #f8fbf8;
+}
+.oferta-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.oferta-info strong { color: #24392b; }
+.oferta-precio { color: #23865b; font-weight: 700; font-size: .92rem; }
+.oferta-item .boton-contactar { width: auto; margin: 0; flex-shrink: 0; }
+
+/* Estados de solicitud */
+.estado-aceptada, .estado-en_proceso { background: #e1f0fb; color: #0f4c81; }
+.estado-completada { background: #e3f4e7; color: #1f6b43; }
+.estado-rechazada, .estado-cancelada { background: #fdecea; color: #8c1d18; }
+.solicitud-acciones { display: flex; gap: 10px; margin-top: 6px; }
+.boton-peligro { color: #8c1d18; border-color: #f0c4c0; }
+.boton-peligro:hover { background: #fdecea; }
+
+@media (max-width: 600px) {
+  .servicios-lista { grid-template-columns: 1fr; }
+  .oferta-item { flex-direction: column; align-items: stretch; }
+  .oferta-item .boton-contactar { width: 100%; }
+}

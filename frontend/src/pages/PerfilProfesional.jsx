@@ -1,9 +1,34 @@
 import { Link, useParams } from 'react-router-dom';
-import { profesionales } from '../data/datos.js';
+import { listarOfertas } from '../services/catalogo.js';
+import { useCargar } from '../hooks/useCargar.js';
+import { formatearPrecio } from '../utils/formato.js';
+import { agruparPorProfesional, categoriasDe } from '../utils/profesionales.js';
+import EstadoCarga from '../components/EstadoCarga.jsx';
+import IconoCategoria from '../components/IconoCategoria.jsx';
 
 function PerfilProfesional() {
   const { id } = useParams();
-  const profesional = profesionales.find((p) => p.id === Number(id));
+  const { datos, cargando, error, recargar } = useCargar(listarOfertas);
+
+  const profesional = datos
+    ? agruparPorProfesional(datos).find((item) => item.id === Number(id))
+    : null;
+
+  if (cargando || error) {
+    return (
+      <section className="seccion panel-flujo">
+        <Link className="boton-secundario boton-volver" to="/profesionales">
+          ← Volver a profesionales
+        </Link>
+        <EstadoCarga
+          cargando={cargando}
+          error={error}
+          onReintentar={recargar}
+          texto="Cargando perfil…"
+        />
+      </section>
+    );
+  }
 
   if (!profesional) {
     return (
@@ -17,6 +42,8 @@ function PerfilProfesional() {
     );
   }
 
+  const categorias = categoriasDe(profesional);
+
   return (
     <section className="seccion panel-flujo">
       <Link className="boton-secundario boton-volver" to="/profesionales">
@@ -24,14 +51,39 @@ function PerfilProfesional() {
       </Link>
 
       <div className="perfil-contenido">
-        <div className="profesional-avatar perfil-avatar">{profesional.icono}</div>
-        <span className="oficio">{profesional.oficio}</span>
+        <div className="profesional-avatar perfil-avatar">
+          <IconoCategoria nombre={categorias[0]} />
+        </div>
+        <span className="oficio">{categorias.join(' · ')}</span>
         <h2>{profesional.nombre}</h2>
-        <p>{profesional.descripcion}</p>
-        <p className="perfil-calificacion">⭐ {profesional.calificacion} / 5</p>
-        <Link className="boton-contactar" to={`/solicitudes/nueva/${profesional.id}`}>
-          Solicitar servicio
-        </Link>
+        <p>
+          {profesional.descripcion ||
+            'Este profesional aún no ha agregado una descripción.'}
+        </p>
+        {profesional.experiencia > 0 && (
+          <p className="perfil-calificacion">
+            {profesional.experiencia}{' '}
+            {profesional.experiencia === 1 ? 'año' : 'años'} de experiencia
+          </p>
+        )}
+
+        <h3 className="titulo-ofertas">Servicios que ofrece</h3>
+        <div className="ofertas-lista">
+          {profesional.ofertas.map((oferta) => (
+            <div className="oferta-item" key={oferta.id}>
+              <div className="oferta-info">
+                <strong>{oferta.servicio_nombre}</strong>
+                {oferta.servicio_descripcion && (
+                  <span className="solicitud-meta">{oferta.servicio_descripcion}</span>
+                )}
+                <span className="oferta-precio">{formatearPrecio(oferta.precio)}</span>
+              </div>
+              <Link className="boton-contactar" to={`/solicitudes/nueva/${oferta.id}`}>
+                Solicitar servicio
+              </Link>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );

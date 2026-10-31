@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { profesionales } from '../data/datos.js';
+import { ErrorApi } from '../services/api.js';
+import { crearSolicitud, listarOfertas } from '../services/catalogo.js';
+import { useCargar } from '../hooks/useCargar.js';
+import { formatearPrecio } from '../utils/formato.js';
+import EstadoCarga from '../components/EstadoCarga.jsx';
+import IconoCategoria from '../components/IconoCategoria.jsx';
+import Mensaje from '../components/Mensaje.jsx';
 
 const solicitudInicial = {
   descripcion: '',
@@ -14,21 +20,53 @@ function calcularFechaMinima() {
     .slice(0, 16);
 }
 
-function NuevaSolicitud({ agregarSolicitud }) {
+// Junta los mensajes de validación que devuelve el backend.
+function textoDeError(err) {
+  if (err instanceof ErrorApi && err.status === 400 && err.datos && typeof err.datos === 'object') {
+    const mensajes = Object.values(err.datos)
+      .flat()
+      .filter((mensaje) => typeof mensaje === 'string');
+    if (mensajes.length > 0) return mensajes.join(' ');
+  }
+  return err.message;
+}
+
+// El parámetro :id de la ruta es el id de la OFERTA (profesional + servicio).
+function NuevaSolicitud() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const profesional = profesionales.find((p) => p.id === Number(id));
+  const { datos, cargando, error, recargar } = useCargar(listarOfertas);
 
   const [solicitud, setSolicitud] = useState(solicitudInicial);
   const [enRevision, setEnRevision] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState('');
   const [fechaMinima] = useState(calcularFechaMinima);
 
-  if (!profesional) {
+  const oferta = datos?.find((item) => item.id === Number(id));
+
+  if (cargando || error) {
+    return (
+      <section className="seccion panel-flujo">
+        <Link className="boton-secundario boton-volver" to="/profesionales">
+          ← Volver a profesionales
+        </Link>
+        <EstadoCarga
+          cargando={cargando}
+          error={error}
+          onReintentar={recargar}
+          texto="Cargando…"
+        />
+      </section>
+    );
+  }
+
+  if (!oferta) {
     return (
       <section className="seccion panel-flujo">
         <div className="encabezado-seccion">
-          <h2>Profesional no encontrado</h2>
-          <p>Elige un profesional para crear tu solicitud.</p>
+          <h2>Servicio no encontrado</h2>
+          <p>Elige un profesional y un servicio para crear tu solicitud.</p>
         </div>
         <Link className="boton-contactar" to="/profesionales">Ir a profesionales</Link>
       </section>
@@ -42,36 +80,45 @@ function NuevaSolicitud({ agregarSolicitud }) {
 
   function revisarSolicitud(evento) {
     evento.preventDefault();
+    setErrorEnvio('');
     setEnRevision(true);
   }
 
-  function guardarSolicitud() {
-    agregarSolicitud({
-      id: Date.now(),
-      profesional: {
-        id: profesional.id,
-        nombre: profesional.nombre,
-        oficio: profesional.oficio,
-        icono: profesional.icono,
-      },
-      ...solicitud,
-      estado: 'Pendiente',
-    });
-    navigate('/solicitudes');
+  async function enviarSolicitud() {
+    setErrorEnvio('');
+    setEnviando(true);
+
+    try {
+      await crearSolicitud({
+        profesional: oferta.profesional,
+        servicio: oferta.servicio,
+        descripcion: solicitud.descripcion.trim(),
+        direccion_servicio: solicitud.direccion.trim(),
+        fecha_solicitada: new Date(solicitud.fecha).toISOString(),
+      });
+      navigate('/solicitudes');
+    } catch (err) {
+      setErrorEnvio(textoDeError(err));
+    } finally {
+      setEnviando(false);
+    }
   }
 
   if (enRevision) {
     return (
       <section className="seccion panel-flujo">
         <div className="formulario-solicitud confirmacion-solicitud">
-          <div className="confirmacion-icono" aria-hidden="true">✓</div>
-          <span className="etiqueta">RESUMEN DE DEMOSTRACIÓN</span>
-          <h2>¡Solicitud preparada!</h2>
-          <p>Estos son los datos que completaste para {profesional.nombre}.</p>
+          <span className="etiqueta">REVISA TU SOLICITUD</span>
+          <h2>Confirma los datos</h2>
+          <p>Al enviarla, quedará en estado Pendiente hasta que el profesional responda.</p>
 
           <dl className="resumen-solicitud">
             <dt>Profesional</dt>
-            <dd>{profesional.nombre}</dd>
+            <dd>{oferta.profesional_nombre}</dd>
+            <dt>Servicio</dt>
+            <dd>{oferta.servicio_nombre}</dd>
+            <dt>Valor del servicio</dt>
+            <dd>{formatearPrecio(oferta.precio)}</dd>
             <dt>Descripción</dt>
             <dd>{solicitud.descripcion}</dd>
             <dt>Dirección</dt>
@@ -80,16 +127,24 @@ function NuevaSolicitud({ agregarSolicitud }) {
             <dd>{solicitud.fecha.replace('T', ' ')}</dd>
           </dl>
 
-          <p className="aviso-local">
-            La solicitud todavía no se envía a un servidor; se guardará solo en esta sesión.
-          </p>
+          <Mensaje tipo="error">{errorEnvio}</Mensaje>
 
           <div className="acciones-confirmacion">
-            <button type="button" className="boton-secundario" onClick={() => setEnRevision(false)}>
+            <button
+              type="button"
+              className="boton-secundario"
+              onClick={() => setEnRevision(false)}
+              disabled={enviando}
+            >
               Editar datos
             </button>
-            <button type="button" className="boton-contactar" onClick={guardarSolicitud}>
-              Guardar solicitud
+            <button
+              type="button"
+              className="boton-contactar"
+              onClick={enviarSolicitud}
+              disabled={enviando}
+            >
+              {enviando ? 'Enviando…' : 'Enviar solicitud'}
             </button>
           </div>
         </div>
@@ -102,7 +157,7 @@ function NuevaSolicitud({ agregarSolicitud }) {
       <div className="formulario-solicitud">
         <Link
           className="boton-secundario boton-volver"
-          to={`/profesionales/${profesional.id}`}
+          to={`/profesionales/${oferta.profesional}`}
         >
           ← Volver al perfil
         </Link>
@@ -112,10 +167,12 @@ function NuevaSolicitud({ agregarSolicitud }) {
           <h2>Solicitar servicio</h2>
           <p>Cuéntanos qué necesitas y cuándo te gustaría recibir ayuda.</p>
           <div className="profesional-elegido">
-            <span className="profesional-elegido-icono">{profesional.icono}</span>
+            <span className="profesional-elegido-icono">
+              <IconoCategoria nombre={oferta.categoria_nombre} />
+            </span>
             <div>
-              <strong>{profesional.nombre}</strong>
-              <span>{profesional.oficio}</span>
+              <strong>{oferta.profesional_nombre}</strong>
+              <span>{oferta.servicio_nombre} · {formatearPrecio(oferta.precio)}</span>
             </div>
           </div>
         </div>
@@ -162,10 +219,6 @@ function NuevaSolicitud({ agregarSolicitud }) {
               required
             />
           </div>
-
-          <p className="aviso-local">
-            Esta es una demostración: los datos no se envían al backend ni se guardan permanentemente.
-          </p>
 
           <button type="submit" className="boton-contactar">
             Revisar solicitud
