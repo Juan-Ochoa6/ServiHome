@@ -35,6 +35,9 @@ class Perfil(models.Model):
     totp_secret = models.TextField(blank=True, default='')
     two_factor_enabled = models.BooleanField(default=False)
 
+# Seguridad: último código TOTP utilizado
+    last_otp_at = models.DateTimeField(null=True, blank=True)
+
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
     def set_totp_secret(self, secret):
@@ -45,3 +48,28 @@ class Perfil(models.Model):
 
     def __str__(self):
         return f'{self.usuario.username} - {self.get_rol_display()}'
+
+
+class DesafioLogin(models.Model):
+
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='desafios_login'
+    )
+
+    token_hash = models.CharField(
+        max_length=64,
+        unique=True
+    )
+
+    consumido = models.BooleanField(default=False)
+
+    intentos_fallidos = models.PositiveSmallIntegerField(default=0)
+
+    bloqueado = models.BooleanField(default=False)
+
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Desafío de {self.usuario.username}'
