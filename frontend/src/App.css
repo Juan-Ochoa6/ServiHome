@@ -185,3 +185,49 @@ main { overflow: clip; }
   .acciones-confirmacion { flex-direction: column; }
   .footer { flex-direction: column; align-items: flex-start; padding: 26px 6%; }
 }
+/* ===== Navegación por páginas ===== */
+.pagina { display: flex; flex-direction: column; }
+.pagina > main { flex: 1; }
+
+.menu a.active {
+  color: #23865b;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 8px;
+}
+a.boton-contactar, a.boton-secundario { text-decoration: none; }
+
+.buscador-pagina { max-width: 620px; margin-top: 22px; }
+
+.encabezado-accion {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+
+/* ===== Solicitudes ===== */
+.solicitudes-lista { display: grid; gap: 16px; }
+.tarjeta-solicitud {
+  display: flex; gap: 16px; padding: 22px;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+  box-shadow: 0 5px 18px #23462d0b;
+}
+.tarjeta-solicitud .profesional-elegido-icono { flex-shrink: 0; }
+.solicitud-cuerpo { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; }
+.solicitud-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.solicitud-cabecera strong { color: #24392b; }
+.solicitud-cuerpo p { margin: 0; color: #65736b; line-height: 1.6; overflow-wrap: anywhere; }
+.solicitud-meta { font-size: .85rem; }
+.estado-solicitud {
+  padding: 4px 12px; border-radius: 999px; background: #fff4d6;
+  color: #7a5b00; font-size: .78rem; font-weight: 700;
+}
+.solicitudes-vacio {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 40px 24px; border: 1px dashed #cbd8ce; border-radius: 16px;
+  color: #65736b; text-align: center;
+}
+.solicitudes-vacio p { margin: 0; line-height: 1.6; }
+
+@media (max-width: 600px) {
+  .tarjeta-solicitud { flex-direction: column; }
+}
