@@ -1,5 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import imagenCasa from '../assets/casa.png';
+import imagenLlave from '../assets/llave.png';
+import imagenParasito from '../assets/parasito.png';
+import imagenElectricidad from '../assets/electrico.png';
+import imagenBuscar from '../assets/buscar.png';
 
 function Inicio() {
   const [busqueda, setBusqueda] = useState('');
@@ -22,7 +27,7 @@ function Inicio() {
         </p>
 
         <form className="buscador" onSubmit={buscar}>
-          <span aria-hidden="true">🔎</span>
+          <span aria-hidden="true"><img className="icono-buscar" src={imagenBuscar} alt="" /></span>
           <input
             type="search"
             placeholder="¿Qué servicio necesitas?"
@@ -36,10 +41,18 @@ function Inicio() {
       </div>
 
       <div className="hero-ilustracion" aria-hidden="true">
-        <div className="circulo"><span>🏡</span></div>
-        <div className="burbuja burbuja-uno">🔧</div>
-        <div className="burbuja burbuja-dos">✨</div>
-        <div className="burbuja burbuja-tres">🪴</div>
+        <div className="circulo">
+          <img src={imagenCasa} alt="" />
+        </div>
+        <div className="burbuja burbuja-uno">
+            <img src={imagenLlave} alt="" />
+        </div>
+        <div className="burbuja burbuja-dos">
+            <img src={imagenElectricidad} alt="" />
+        </div>
+        <div className="burbuja burbuja-tres">
+            <img src={imagenParasito} alt="" />
+        </div>
       </div>
     </section>
   );
