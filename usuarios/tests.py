@@ -1,4 +1,5 @@
 
+import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -13,8 +14,15 @@ from django.test import TestCase, TransactionTestCase
 
 from rest_framework.test import APIClient
 
-from usuarios.models import DesafioLogin
-from usuarios.views import validar_codigo_totp_unico
+from usuarios.models import (
+    DesafioLogin,
+    CodigoRecuperacionMFA
+)
+
+from usuarios.views import (
+    validar_codigo_totp_unico,
+    generar_codigos_recuperacion
+)
 
 
 class LoginMFATests(TestCase):
@@ -22,7 +30,6 @@ class LoginMFATests(TestCase):
     def setUp(self):
         self.client = APIClient()
 
-        # Usuario temporal para las pruebas
         self.usuario = User.objects.create_user(
             username='usuario_prueba',
             email='prueba@servihome.test',
@@ -45,6 +52,447 @@ class LoginMFATests(TestCase):
             },
             format='json'
         )
+
+    # ==========================================
+    # MÉTODOS AUXILIARES
+    # ==========================================
+
+    def activar_mfa(self):
+        """Prepara un usuario con MFA activado."""
+
+        perfil = self.usuario.perfil
+        secret = pyotp.random_base32()
+
+        perfil.set_totp_secret(secret)
+        perfil.two_factor_enabled = True
+        perfil.save()
+
+        return perfil
+
+    def crear_codigo_recuperacion(self):
+        """Crea un código de recuperación para las pruebas."""
+
+        codigo = 'ABCDEF0123456789ABCDEF0123456789'
+
+        codigo_hash = hashlib.sha256(
+            codigo.encode('utf-8')
+        ).hexdigest()
+
+        CodigoRecuperacionMFA.objects.create(
+            usuario=self.usuario,
+            codigo_hash=codigo_hash
+        )
+
+        return codigo
+
+    def obtener_challenge(self):
+        respuesta = self.iniciar_sesion()
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        return respuesta.data['challenge']
+
+    # ==========================================
+    # PRUEBAS DE CÓDIGOS DE RECUPERACIÓN
+    # ==========================================
+
+    def test_generar_ocho_codigos_recuperacion(self):
+        codigos = generar_codigos_recuperacion(self.usuario)
+
+        self.assertEqual(len(codigos), 8)
+        self.assertEqual(len(set(codigos)), 8)
+
+        self.assertEqual(
+            CodigoRecuperacionMFA.objects.filter(
+                usuario=self.usuario
+            ).count(),
+            8
+        )
+
+    def test_codigos_recuperacion_son_almacenados_como_hash(self):
+        codigos = generar_codigos_recuperacion(self.usuario)
+
+        registros = CodigoRecuperacionMFA.objects.filter(
+            usuario=self.usuario
+        )
+
+        hashes = list(
+            registros.values_list('codigo_hash', flat=True)
+        )
+
+        for codigo in codigos:
+            codigo_hash = hashlib.sha256(
+                codigo.encode('utf-8')
+            ).hexdigest()
+
+            self.assertIn(codigo_hash, hashes)
+            self.assertNotIn(codigo, hashes)
+
+    def test_codigos_recuperacion_tienen_formato_correcto(self):
+        codigos = generar_codigos_recuperacion(self.usuario)
+
+        for codigo in codigos:
+            self.assertEqual(len(codigo), 32)
+
+            self.assertTrue(
+                all(
+                    caracter in '0123456789ABCDEF'
+                    for caracter in codigo
+                )
+            )
+
+    def test_generar_nuevos_codigos_invalida_los_anteriores(self):
+        codigos_anteriores = generar_codigos_recuperacion(
+            self.usuario
+        )
+
+        codigos_nuevos = generar_codigos_recuperacion(
+            self.usuario
+        )
+
+        self.assertEqual(len(codigos_nuevos), 8)
+
+        for codigo in codigos_anteriores:
+            codigo_hash = hashlib.sha256(
+                codigo.encode('utf-8')
+            ).hexdigest()
+
+            self.assertFalse(
+                CodigoRecuperacionMFA.objects.filter(
+                    usuario=self.usuario,
+                    codigo_hash=codigo_hash
+                ).exists()
+            )
+
+        for codigo in codigos_nuevos:
+            codigo_hash = hashlib.sha256(
+                codigo.encode('utf-8')
+            ).hexdigest()
+
+            self.assertTrue(
+                CodigoRecuperacionMFA.objects.filter(
+                    usuario=self.usuario,
+                    codigo_hash=codigo_hash
+                ).exists()
+            )
+
+    def test_generar_codigos_elimina_codigos_utilizados_y_no_utilizados(self):
+        codigo = self.crear_codigo_recuperacion()
+
+        codigo_hash = hashlib.sha256(
+            codigo.encode('utf-8')
+        ).hexdigest()
+
+        CodigoRecuperacionMFA.objects.filter(
+            usuario=self.usuario,
+            codigo_hash=codigo_hash
+        ).update(utilizado=True)
+
+        # Se crea un segundo código que permanece sin utilizar.
+        segundo_codigo = '1234567890ABCDEF1234567890ABCDEF'
+
+        segundo_hash = hashlib.sha256(
+            segundo_codigo.encode('utf-8')
+        ).hexdigest()
+
+        CodigoRecuperacionMFA.objects.create(
+            usuario=self.usuario,
+            codigo_hash=segundo_hash
+        )
+
+        nuevos = generar_codigos_recuperacion(self.usuario)
+
+        self.assertEqual(len(nuevos), 8)
+
+        registros = CodigoRecuperacionMFA.objects.filter(
+            usuario=self.usuario
+        )
+
+        self.assertEqual(registros.count(), 8)
+
+        self.assertFalse(
+            registros.filter(utilizado=True).exists()
+        )
+
+        self.assertFalse(
+            registros.filter(
+                codigo_hash__in=[codigo_hash, segundo_hash]
+            ).exists()
+        )
+
+    # ==========================================
+    # INICIO DE SESIÓN CON CÓDIGO DE RECUPERACIÓN
+    # ==========================================
+
+    def test_login_correcto_con_codigo_recuperacion(self):
+        self.activar_mfa()
+
+        codigo = self.crear_codigo_recuperacion()
+        challenge = self.obtener_challenge()
+
+        respuesta = self.client.post(
+            self.url_mfa,
+            {
+                'challenge': challenge,
+                'codigo': codigo
+            },
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertIn('access', respuesta.data)
+        self.assertIn('refresh', respuesta.data)
+
+        registro = CodigoRecuperacionMFA.objects.get(
+            usuario=self.usuario
+        )
+
+        self.assertTrue(registro.utilizado)
+        self.assertIsNotNone(registro.fecha_uso)
+
+    def test_codigo_recuperacion_no_se_puede_reutilizar(self):
+        self.activar_mfa()
+
+        codigo = self.crear_codigo_recuperacion()
+
+        primer_challenge = self.obtener_challenge()
+
+        primera_respuesta = self.client.post(
+            self.url_mfa,
+            {
+                'challenge': primer_challenge,
+                'codigo': codigo
+            },
+            format='json'
+        )
+
+        self.assertEqual(primera_respuesta.status_code, 200)
+
+        segundo_challenge = self.obtener_challenge()
+
+        segunda_respuesta = self.client.post(
+            self.url_mfa,
+            {
+                'challenge': segundo_challenge,
+                'codigo': codigo
+            },
+            format='json'
+        )
+
+        self.assertEqual(segunda_respuesta.status_code, 400)
+
+        registro = CodigoRecuperacionMFA.objects.get(
+            usuario=self.usuario
+        )
+
+        self.assertTrue(registro.utilizado)
+
+    def test_codigo_recuperacion_no_utilizado_no_se_consume_si_es_incorrecto(self):
+        self.activar_mfa()
+
+        self.crear_codigo_recuperacion()
+        challenge = self.obtener_challenge()
+
+        respuesta = self.client.post(
+            self.url_mfa,
+            {
+                'challenge': challenge,
+                'codigo': 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+            },
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+        registro = CodigoRecuperacionMFA.objects.get(
+            usuario=self.usuario
+        )
+
+        self.assertFalse(registro.utilizado)
+        self.assertIsNone(registro.fecha_uso)
+
+    def test_codigo_recuperacion_incorrecto_incrementa_intentos(self):
+        self.activar_mfa()
+
+        challenge = self.obtener_challenge()
+
+        for intento in range(1, 5):
+            respuesta = self.client.post(
+                self.url_mfa,
+                {
+                    'challenge': challenge,
+                    'codigo': 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+                },
+                format='json'
+            )
+
+            self.assertEqual(respuesta.status_code, 400)
+            self.assertEqual(
+                respuesta.data['intentos_restantes'],
+                5 - intento
+            )
+
+        desafio = DesafioLogin.objects.get(
+            usuario=self.usuario
+        )
+
+        self.assertEqual(desafio.intentos_fallidos, 4)
+        self.assertFalse(desafio.bloqueado)
+
+    def test_quinto_codigo_recuperacion_incorrecto_bloquea_desafio(self):
+        self.activar_mfa()
+
+        challenge = self.obtener_challenge()
+
+        for _ in range(5):
+            respuesta = self.client.post(
+                self.url_mfa,
+                {
+                    'challenge': challenge,
+                    'codigo': 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+                },
+                format='json'
+            )
+
+        self.assertEqual(respuesta.status_code, 401)
+
+        desafio = DesafioLogin.objects.get(
+            usuario=self.usuario
+        )
+
+        self.assertEqual(desafio.intentos_fallidos, 5)
+        self.assertTrue(desafio.bloqueado)
+
+    def test_codigo_recuperacion_no_funciona_sin_mfa_activo(self):
+        codigo = self.crear_codigo_recuperacion()
+        challenge = self.obtener_challenge()
+
+        respuesta = self.client.post(
+            self.url_mfa,
+            {
+                'challenge': challenge,
+                'codigo': codigo
+            },
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+        registro = CodigoRecuperacionMFA.objects.get(
+            usuario=self.usuario
+        )
+
+        self.assertFalse(registro.utilizado)
+
+    def test_codigo_recuperacion_mal_formado_es_rechazado(self):
+        self.activar_mfa()
+
+        challenge = self.obtener_challenge()
+
+        codigos_invalidos = [
+            '12345',
+            '1234567',
+            'ABCDEF',
+            'G' * 32,
+            'A' * 31,
+            'A' * 33,
+            'A' * 32 + '!'
+        ]
+
+        for codigo in codigos_invalidos:
+            respuesta = self.client.post(
+                self.url_mfa,
+                {
+                    'challenge': challenge,
+                    'codigo': codigo
+                },
+                format='json'
+            )
+
+            self.assertEqual(respuesta.status_code, 400)
+
+    def test_login_totp_no_genera_codigos_nuevos_si_mfa_ya_esta_activo(self):
+        self.activar_mfa()
+
+        generar_codigos_recuperacion(self.usuario)
+
+        cantidad_anterior = CodigoRecuperacionMFA.objects.filter(
+            usuario=self.usuario
+        ).count()
+
+        challenge = self.obtener_challenge()
+
+        with patch(
+            'usuarios.views.validar_codigo_totp_unico',
+            return_value=True
+        ):
+            respuesta = self.client.post(
+                self.url_mfa,
+                {
+                    'challenge': challenge,
+                    'codigo': '123456'
+                },
+                format='json'
+            )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.assertNotIn(
+            'codigos_recuperacion',
+            respuesta.data
+        )
+
+        self.assertEqual(
+            CodigoRecuperacionMFA.objects.filter(
+                usuario=self.usuario
+            ).count(),
+            cantidad_anterior
+        )
+
+    @patch(
+        'usuarios.views.validar_codigo_totp_unico',
+        return_value=True
+    )
+    def test_primera_activacion_mfa_entrega_ocho_codigos(self, mock_validar):
+        respuesta_login = self.iniciar_sesion()
+        challenge = respuesta_login.data['challenge']
+
+        respuesta = self.client.post(
+            self.url_mfa,
+            {
+                'challenge': challenge,
+                'codigo': '123456'
+            },
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.assertIn(
+            'codigos_recuperacion',
+            respuesta.data
+        )
+
+        codigos = respuesta.data['codigos_recuperacion']
+
+        self.assertEqual(len(codigos), 8)
+        self.assertEqual(len(set(codigos)), 8)
+
+        self.assertEqual(
+            CodigoRecuperacionMFA.objects.filter(
+                usuario=self.usuario
+            ).count(),
+            8
+        )
+
+        perfil = self.usuario.perfil
+        perfil.refresh_from_db()
+
+        self.assertTrue(perfil.two_factor_enabled)
+
+    # ==========================================
+    # PRUEBAS GENERALES DE INICIO DE SESIÓN
+    # ==========================================
 
     def test_login_campos_vacios(self):
         respuesta = self.client.post(
@@ -106,7 +554,6 @@ class LoginMFATests(TestCase):
 
         self.assertEqual(respuesta.status_code, 400)
 
-    # PRUEBA 1: cuatro intentos incorrectos no bloquean
     @patch(
         'usuarios.views.validar_codigo_totp_unico',
         return_value=False
@@ -135,7 +582,6 @@ class LoginMFATests(TestCase):
         self.assertFalse(desafio.bloqueado)
         self.assertFalse(desafio.consumido)
 
-    # PRUEBA 2: el quinto intento bloquea el desafío
     @patch(
         'usuarios.views.validar_codigo_totp_unico',
         return_value=False
@@ -163,7 +609,6 @@ class LoginMFATests(TestCase):
         self.assertEqual(desafio.intentos_fallidos, 5)
         self.assertTrue(desafio.bloqueado)
 
-    # PRUEBA 3: el sexto intento no incrementa el contador
     @patch(
         'usuarios.views.validar_codigo_totp_unico',
         return_value=False
@@ -177,7 +622,6 @@ class LoginMFATests(TestCase):
             'codigo': '000000'
         }
 
-        # Realizar los cinco intentos permitidos
         for _ in range(5):
             self.client.post(
                 self.url_mfa,
@@ -192,7 +636,6 @@ class LoginMFATests(TestCase):
         self.assertEqual(desafio.intentos_fallidos, 5)
         self.assertTrue(desafio.bloqueado)
 
-        # Realizar el sexto intento
         sexta_respuesta = self.client.post(
             self.url_mfa,
             datos,
@@ -226,6 +669,7 @@ class LoginMFATests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
         self.assertIn('access', respuesta.data)
         self.assertIn('refresh', respuesta.data)
+
         self.assertEqual(
             respuesta.data['usuario'],
             'usuario_prueba'
@@ -324,6 +768,7 @@ class LoginMFATests(TestCase):
         )
 
         self.assertEqual(segunda_respuesta.status_code, 401)
+
         self.assertIn(
             'utilizado',
             segunda_respuesta.data['error'].lower()
@@ -461,3 +906,143 @@ class LoginMFAConcurrenciaTests(TransactionTestCase):
         perfil.refresh_from_db()
 
         self.assertIsNotNone(perfil.last_otp_at)
+class AdministracionProfesionalesTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+
+        # Administrador
+        self.usuario_admin = User.objects.create_user(
+            username='admin_test',
+            email='admin@servihome.test',
+            password='ClaveAdmin123!',
+            is_staff=True
+        )
+
+        # Usuario normal
+        self.usuario_normal = User.objects.create_user(
+            username='usuario_normal_test',
+            password='ClaveNormal123!'
+        )
+
+        # Profesional pendiente
+        self.usuario_profesional = User.objects.create_user(
+            username='profesional_pendiente_test',
+            email='profesional@servihome.test',
+            password='ClaveProfesional123!'
+        )
+
+        self.perfil_profesional = self.usuario_profesional.perfil
+        self.perfil_profesional.rol = 'profesional'
+        self.perfil_profesional.estado_verificacion = 'pendiente'
+        self.perfil_profesional.disponible = False
+        self.perfil_profesional.save()
+
+        self.url_lista = '/api/usuarios/admin/profesionales/'
+        self.url_estado = (
+            f'/api/usuarios/admin/profesionales/'
+            f'{self.perfil_profesional.pk}/'
+        )
+
+    def test_usuario_normal_no_puede_listar_profesionales_pendientes(self):
+        self.client.force_authenticate(user=self.usuario_normal)
+
+        respuesta = self.client.get(self.url_lista)
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_usuario_normal_no_puede_aprobar_profesional(self):
+        self.client.force_authenticate(user=self.usuario_normal)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_verificacion': 'aprobado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+        self.perfil_profesional.refresh_from_db()
+        self.assertEqual(
+            self.perfil_profesional.estado_verificacion,
+            'pendiente'
+        )
+
+    def test_administrador_puede_listar_profesionales_pendientes(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.get(self.url_lista)
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        ids = [item['id'] for item in respuesta.data]
+
+        self.assertIn(self.perfil_profesional.pk, ids)
+
+    def test_administrador_puede_aprobar_profesional(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_verificacion': 'aprobado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil_profesional.refresh_from_db()
+
+        self.assertEqual(
+            self.perfil_profesional.estado_verificacion,
+            'aprobado'
+        )
+
+        # La aprobación no activa automáticamente la disponibilidad.
+        self.assertFalse(self.perfil_profesional.disponible)
+
+    def test_administrador_puede_rechazar_profesional(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_verificacion': 'rechazado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil_profesional.refresh_from_db()
+
+        self.assertEqual(
+            self.perfil_profesional.estado_verificacion,
+            'rechazado'
+        )
+
+        self.assertFalse(self.perfil_profesional.disponible)
+
+    def test_no_se_puede_aprobar_un_profesional_ya_revisado(self):
+        self.perfil_profesional.estado_verificacion = 'aprobado'
+        self.perfil_profesional.save(
+            update_fields=['estado_verificacion']
+        )
+
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_verificacion': 'rechazado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_no_se_acepta_un_estado_de_verificacion_invalido(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_verificacion': 'en_revision'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)

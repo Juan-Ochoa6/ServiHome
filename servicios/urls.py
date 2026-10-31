@@ -6,6 +6,10 @@ from .views import (
     SolicitudListCreateAPIView,
     SolicitudEstadoAPIView,
 )
+from .views import (
+    OfertaPendienteListAPIView,
+    OfertaEstadoAPIView,
+)
 
 urlpatterns = [
     path(
@@ -28,4 +32,14 @@ urlpatterns = [
         SolicitudEstadoAPIView.as_view(),
         name='cambiar-estado-solicitud',
     ),
+    path(
+    'admin/ofertas/',
+    OfertaPendienteListAPIView.as_view(),
+    name='admin-listar-ofertas',
+),
+path(
+    'admin/ofertas/<int:pk>/',
+    OfertaEstadoAPIView.as_view(),
+    name='admin-cambiar-estado-oferta',
+),
 ]

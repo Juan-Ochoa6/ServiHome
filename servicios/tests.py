@@ -47,10 +47,26 @@ class SolicitudPermisosTests(APITestCase):
         self.cliente.save(update_fields=['rol'])
 
         self.profesional1.rol = 'profesional'
-        self.profesional1.save(update_fields=['rol'])
+        self.profesional1.estado_verificacion = 'aprobado'
+        self.profesional1.disponible = True
+        self.profesional1.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'disponible',
+            ]
+        )
 
         self.profesional2.rol = 'profesional'
-        self.profesional2.save(update_fields=['rol'])
+        self.profesional2.estado_verificacion = 'aprobado'
+        self.profesional2.disponible = True
+        self.profesional2.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'disponible',
+            ]
+        )
 
         # Categoría y servicio
         self.categoria = Categoria.objects.create(
@@ -67,11 +83,12 @@ class SolicitudPermisosTests(APITestCase):
             activo=True
         )
 
-        # El servicio lo ofrece únicamente el profesional 1
-        ServicioProfesional.objects.create(
+        # Oferta aprobada del profesional 1
+        self.oferta = ServicioProfesional.objects.create(
             servicio=self.servicio,
             profesional=self.profesional1,
-            precio=Decimal('50000.00')
+            precio=Decimal('50000.00'),
+            estado_aprobacion='aprobado'
         )
 
         # Solicitud asignada al profesional 1
@@ -266,3 +283,181 @@ class SolicitudPermisosTests(APITestCase):
             self.solicitud.estado,
             'completada'
         )
+
+class AdministracionOfertasTests(APITestCase):
+
+    def setUp(self):
+        # Administrador
+        self.usuario_admin = User.objects.create_user(
+            username='admin_ofertas_test',
+            password='ClaveAdmin123!',
+            is_staff=True
+        )
+
+        # Usuario normal
+        self.usuario_normal = User.objects.create_user(
+            username='usuario_ofertas_test',
+            password='ClaveNormal123!'
+        )
+
+        # Profesional aprobado
+        self.usuario_profesional = User.objects.create_user(
+            username='profesional_ofertas_test',
+            password='ClaveProfesional123!'
+        )
+
+        self.profesional = self.usuario_profesional.perfil
+        self.profesional.rol = 'profesional'
+        self.profesional.estado_verificacion = 'aprobado'
+        self.profesional.disponible = True
+        self.profesional.save()
+
+        # Categoría y servicio
+        self.categoria = Categoria.objects.create(
+            nombre='Electricidad administrativa test',
+            descripcion='Categoría para pruebas administrativas',
+            activa=True
+        )
+
+        self.servicio = Servicio.objects.create(
+            categoria=self.categoria,
+            nombre='Instalación eléctrica test',
+            descripcion='Servicio para pruebas administrativas',
+            precio_base=Decimal('80000.00'),
+            activo=True
+        )
+
+        # Oferta pendiente
+        self.oferta = ServicioProfesional.objects.create(
+            servicio=self.servicio,
+            profesional=self.profesional,
+            precio=Decimal('75000.00'),
+            estado_aprobacion='pendiente'
+        )
+
+        self.url_lista = '/api/admin/ofertas/'
+        self.url_estado = (
+            f'/api/admin/ofertas/{self.oferta.pk}/'
+        )
+
+    def test_usuario_normal_no_puede_listar_ofertas_pendientes(self):
+        self.client.force_authenticate(user=self.usuario_normal)
+
+        respuesta = self.client.get(self.url_lista)
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_usuario_normal_no_puede_aprobar_ofertas(self):
+        self.client.force_authenticate(user=self.usuario_normal)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_aprobacion': 'aprobado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+        self.oferta.refresh_from_db()
+
+        self.assertEqual(
+            self.oferta.estado_aprobacion,
+            'pendiente'
+        )
+
+    def test_administrador_puede_listar_ofertas_pendientes(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.get(self.url_lista)
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        ids = [item['id'] for item in respuesta.data]
+
+        self.assertIn(self.oferta.pk, ids)
+
+    def test_administrador_puede_aprobar_oferta(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_aprobacion': 'aprobado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.oferta.refresh_from_db()
+
+        self.assertEqual(
+            self.oferta.estado_aprobacion,
+            'aprobado'
+        )
+
+    def test_administrador_puede_rechazar_oferta(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_aprobacion': 'rechazado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.oferta.refresh_from_db()
+
+        self.assertEqual(
+            self.oferta.estado_aprobacion,
+            'rechazado'
+        )
+
+    def test_no_se_puede_aprobar_oferta_de_profesional_no_aprobado(self):
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(
+            update_fields=['estado_verificacion']
+        )
+
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_aprobacion': 'aprobado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+        self.oferta.refresh_from_db()
+
+        self.assertEqual(
+            self.oferta.estado_aprobacion,
+            'pendiente'
+        )
+
+    def test_no_se_puede_revisar_una_oferta_ya_procesada(self):
+        self.oferta.estado_aprobacion = 'aprobado'
+        self.oferta.save(
+            update_fields=['estado_aprobacion']
+        )
+
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_aprobacion': 'rechazado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_no_se_acepta_estado_de_oferta_invalido(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado_aprobacion': 'pendiente'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)

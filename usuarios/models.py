@@ -23,6 +23,18 @@ class Perfil(models.Model):
         choices=ROLES,
         default='cliente'
     )
+    ESTADOS_VERIFICACION = [
+    ('no_aplica', 'No aplica'),
+    ('pendiente', 'Pendiente de revisión'),
+    ('en_revision', 'En revisión'),
+    ('aprobado', 'Aprobado'),
+    ('rechazado', 'Rechazado'),
+    ]
+    estado_verificacion = models.CharField(
+    max_length=20,
+    choices=ESTADOS_VERIFICACION,
+    default='no_aplica'
+    )
 
     telefono = models.CharField(max_length=20, blank=True)
     direccion = models.CharField(max_length=255, blank=True)
@@ -73,3 +85,25 @@ class DesafioLogin(models.Model):
 
     def __str__(self):
         return f'Desafío de {self.usuario.username}'
+
+class CodigoRecuperacionMFA(models.Model):
+
+    usuario = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='codigos_recuperacion_mfa'
+    )
+
+    codigo_hash = models.CharField(
+        max_length=64,
+        unique=True
+    )
+
+    utilizado = models.BooleanField(default=False)
+
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    fecha_uso = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f'Código de recuperación de {self.usuario.username}'

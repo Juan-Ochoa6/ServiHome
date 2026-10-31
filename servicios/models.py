@@ -35,6 +35,16 @@ class Servicio(models.Model):
 
 
 class ServicioProfesional(models.Model):
+    ESTADOS_APROBACION = [
+    ('pendiente', 'Pendiente de aprobación'),
+    ('aprobado', 'Aprobado'),
+    ('rechazado', 'Rechazado'),
+    ]
+    estado_aprobacion = models.CharField(
+    max_length=20,
+    choices=ESTADOS_APROBACION,
+    default='pendiente'
+    )
     servicio = models.ForeignKey(
         Servicio,
         on_delete=models.CASCADE,
