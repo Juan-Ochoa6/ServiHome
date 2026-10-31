@@ -156,3 +156,50 @@ class SolicitudServicioSerializer(serializers.ModelSerializer):
                 })
 
         return attrs
+class OfertaPublicaSerializer(serializers.ModelSerializer):
+    profesional_nombre = serializers.SerializerMethodField()
+    descripcion_profesional = serializers.CharField(
+        source='profesional.descripcion_profesional',
+        read_only=True
+    )
+    experiencia_anos = serializers.IntegerField(
+        source='profesional.experiencia_anos',
+        read_only=True
+    )
+    servicio_nombre = serializers.CharField(
+        source='servicio.nombre',
+        read_only=True
+    )
+    servicio_descripcion = serializers.CharField(
+        source='servicio.descripcion',
+        read_only=True
+    )
+    categoria = serializers.IntegerField(
+        source='servicio.categoria_id',
+        read_only=True
+    )
+    categoria_nombre = serializers.CharField(
+        source='servicio.categoria.nombre',
+        read_only=True
+    )
+
+    class Meta:
+        model = ServicioProfesional
+        fields = [
+            'id',
+            'profesional',
+            'profesional_nombre',
+            'descripcion_profesional',
+            'experiencia_anos',
+            'servicio',
+            'servicio_nombre',
+            'servicio_descripcion',
+            'categoria',
+            'categoria_nombre',
+            'precio',
+        ]
+        read_only_fields = fields
+
+    def get_profesional_nombre(self, oferta):
+        usuario = oferta.profesional.usuario
+        return usuario.get_full_name().strip() or usuario.username

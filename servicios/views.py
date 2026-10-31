@@ -2,13 +2,35 @@
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.exceptions import PermissionDenied
 from django.db import transaction
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from usuarios.models import Perfil
+from .serializers import OfertaPublicaSerializer
 
+class OfertaPublicaListAPIView(generics.ListAPIView):
+    """Ofertas aprobadas de profesionales aprobados y disponibles."""
+
+    serializer_class = OfertaPublicaSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return (
+            ServicioProfesional.objects
+            .filter(
+                estado_aprobacion='aprobado',
+                profesional__estado_verificacion='aprobado',
+                profesional__disponible=True,
+                servicio__activo=True,
+            )
+            .select_related(
+                'profesional__usuario',
+                'servicio__categoria',
+            )
+            .order_by('id')
+        )
 from .models import (
     Categoria,
     Servicio,
@@ -25,6 +47,7 @@ from .serializers import (
 class CategoriaListAPIView(generics.ListAPIView):
     queryset = Categoria.objects.filter(activa=True)
     serializer_class = CategoriaSerializer
+    permission_classes = [AllowAny]
 
 
 class ServicioListAPIView(generics.ListAPIView):
@@ -34,6 +57,7 @@ class ServicioListAPIView(generics.ListAPIView):
         .select_related('categoria')
     )
     serializer_class = ServicioSerializer
+    permission_classes = [AllowAny]
 
 
 class SolicitudListCreateAPIView(generics.ListCreateAPIView):

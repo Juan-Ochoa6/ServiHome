@@ -1,4 +1,5 @@
 
+
 from django.urls import path
 from .views import (
     CategoriaListAPIView,
@@ -9,9 +10,15 @@ from .views import (
 from .views import (
     OfertaPendienteListAPIView,
     OfertaEstadoAPIView,
+    OfertaPublicaListAPIView,
 )
 
 urlpatterns = [
+     path(
+        'ofertas/',
+        OfertaPublicaListAPIView.as_view(),
+        name='lista-ofertas',
+    ),
     path(
         'categorias/',
         CategoriaListAPIView.as_view(),
