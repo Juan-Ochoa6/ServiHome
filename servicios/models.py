@@ -112,3 +112,62 @@ class SolicitudServicio(models.Model):
 
     def __str__(self):
         return f'Solicitud #{self.pk} - {self.get_estado_display()}'
+
+class PropuestaPrecio(models.Model):
+
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+        ('aceptada', 'Aceptada'),
+        ('rechazada', 'Rechazada'),
+        ('reemplazada', 'Reemplazada'),
+    ]
+
+    solicitud = models.ForeignKey(
+        SolicitudServicio,
+        on_delete=models.CASCADE,
+        related_name='propuestas'
+    )
+
+    proponente = models.ForeignKey(
+        'usuarios.Perfil',
+        on_delete=models.PROTECT,
+        related_name='propuestas_precio'
+    )
+
+    precio = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADOS,
+        default='pendiente'
+    )
+
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.precio <= 0:
+            raise ValidationError({
+                'precio': 'El precio debe ser mayor que cero.'
+            })
+
+        if self.proponente_id and self.solicitud_id:
+            participantes = [
+                self.solicitud.cliente_id,
+                self.solicitud.profesional_id,
+            ]
+
+            if self.proponente_id not in participantes:
+                raise ValidationError({
+                    'proponente': (
+                        'Solo el cliente o el profesional de la solicitud '
+                        'pueden realizar propuestas.'
+                    )
+                })
+
+    def __str__(self):
+        return f'Propuesta #{self.pk} - {self.precio}'

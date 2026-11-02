@@ -5,6 +5,7 @@ from .models import (
     Servicio,
     SolicitudServicio,
     ServicioProfesional,
+    PropuestaPrecio,
 )
 from usuarios.models import Perfil
 
@@ -203,3 +204,44 @@ class OfertaPublicaSerializer(serializers.ModelSerializer):
     def get_profesional_nombre(self, oferta):
         usuario = oferta.profesional.usuario
         return usuario.get_full_name().strip() or usuario.username
+class PropuestaPrecioSerializer(serializers.ModelSerializer):
+    proponente_nombre = serializers.CharField(
+        source='proponente.usuario.username',
+        read_only=True
+    )
+
+    estado_display = serializers.CharField(
+        source='get_estado_display',
+        read_only=True
+    )
+
+    class Meta:
+        model = PropuestaPrecio
+        fields = [
+            'id',
+            'solicitud',
+            'proponente',
+            'proponente_nombre',
+            'precio',
+            'estado',
+            'estado_display',
+            'fecha_creacion',
+        ]
+
+        read_only_fields = [
+            'id',
+            'solicitud',
+            'proponente',
+            'proponente_nombre',
+            'estado',
+            'estado_display',
+            'fecha_creacion',
+        ]
+
+    def validate_precio(self, precio):
+        if precio <= 0:
+            raise serializers.ValidationError(
+                'El precio debe ser mayor que cero.'
+            )
+
+        return precio

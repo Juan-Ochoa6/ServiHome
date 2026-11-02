@@ -1,20 +1,19 @@
-
-
 from django.urls import path
+
 from .views import (
     CategoriaListAPIView,
     ServicioListAPIView,
     SolicitudListCreateAPIView,
     SolicitudEstadoAPIView,
-)
-from .views import (
     OfertaPendienteListAPIView,
     OfertaEstadoAPIView,
     OfertaPublicaListAPIView,
+    PropuestaPrecioListCreateAPIView,
+    PropuestaPrecioRespuestaAPIView,
 )
 
 urlpatterns = [
-     path(
+    path(
         'ofertas/',
         OfertaPublicaListAPIView.as_view(),
         name='lista-ofertas',
@@ -40,13 +39,23 @@ urlpatterns = [
         name='cambiar-estado-solicitud',
     ),
     path(
-    'admin/ofertas/',
-    OfertaPendienteListAPIView.as_view(),
-    name='admin-listar-ofertas',
-),
-path(
-    'admin/ofertas/<int:pk>/',
-    OfertaEstadoAPIView.as_view(),
-    name='admin-cambiar-estado-oferta',
-),
+        'admin/ofertas/',
+        OfertaPendienteListAPIView.as_view(),
+        name='admin-listar-ofertas',
+    ),
+    path(
+        'admin/ofertas/<int:pk>/',
+        OfertaEstadoAPIView.as_view(),
+        name='admin-cambiar-estado-oferta',
+    ),
+    path(
+        'solicitudes/<int:pk>/propuestas/',
+        PropuestaPrecioListCreateAPIView.as_view(),
+        name='propuestas-precio',
+    ),
+    path(
+        'solicitudes/<int:pk>/propuestas/<int:propuesta_id>/',
+        PropuestaPrecioRespuestaAPIView.as_view(),
+        name='responder-propuesta-precio',
+    ),
 ]

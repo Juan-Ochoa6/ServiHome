@@ -1,14 +1,34 @@
+from django.db import transaction
 
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.permissions import (
+    AllowAny,
+    IsAuthenticated,
+    IsAdminUser,
+)
 from rest_framework.exceptions import PermissionDenied
-from django.db import transaction
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+
 from usuarios.models import Perfil
-from .serializers import OfertaPublicaSerializer
+
+from .models import (
+    Categoria,
+    Servicio,
+    SolicitudServicio,
+    ServicioProfesional,
+    PropuestaPrecio,
+)
+
+from .serializers import (
+    CategoriaSerializer,
+    ServicioSerializer,
+    SolicitudServicioSerializer,
+    OfertaPublicaSerializer,
+    PropuestaPrecioSerializer,
+)
 
 class OfertaPublicaListAPIView(generics.ListAPIView):
     """Ofertas aprobadas de profesionales aprobados y disponibles."""
@@ -177,9 +197,9 @@ class SolicitudEstadoAPIView(APIView):
                     )
 
                 estados_permitidos = {
-                    'pendiente': ['aceptada', 'rechazada'],
-                    'aceptada': ['en_proceso'],
-                    'en_proceso': ['completada'],
+                'pendiente': ['rechazada'],
+                'aceptada': ['en_proceso'],
+                'en_proceso': ['completada'],
                 }
 
             elif perfil.rol == 'cliente':
@@ -351,4 +371,222 @@ class OfertaEstadoAPIView(APIView):
             'mensaje': 'Estado de la oferta actualizado.',
             'oferta_id': oferta.id,
             'estado_aprobacion': oferta.estado_aprobacion,
+        })
+class PropuestaPrecioListCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_solicitud_y_perfil(self, request, pk):
+        try:
+            perfil = Perfil.objects.get(usuario=request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        try:
+            solicitud = (
+                SolicitudServicio.objects
+                .select_for_update()
+                .get(pk=pk)
+            )
+        except SolicitudServicio.DoesNotExist:
+            return None, perfil
+
+        if perfil.id not in [
+            solicitud.cliente_id,
+            solicitud.profesional_id,
+        ]:
+            raise PermissionDenied(
+                'No participas en esta solicitud.'
+            )
+
+        return solicitud, perfil
+
+    def get(self, request, pk):
+        with transaction.atomic():
+            solicitud, perfil = self.get_solicitud_y_perfil(
+                request, pk
+            )
+
+            if solicitud is None:
+                return Response(
+                    {'error': 'La solicitud no existe.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            propuestas = solicitud.propuestas.select_related(
+                'proponente__usuario'
+            ).order_by('fecha_creacion')
+
+            serializer = PropuestaPrecioSerializer(
+                propuestas,
+                many=True
+            )
+
+            return Response(serializer.data)
+
+    def post(self, request, pk):
+        serializer = PropuestaPrecioSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        precio = serializer.validated_data['precio']
+
+        with transaction.atomic():
+            solicitud, perfil = self.get_solicitud_y_perfil(
+                request, pk
+            )
+
+            if solicitud is None:
+                return Response(
+                    {'error': 'La solicitud no existe.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if solicitud.estado != 'pendiente':
+                return Response(
+                    {
+                        'error': (
+                            'Esta solicitud ya no está en negociación.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            propuesta_pendiente = solicitud.propuestas.filter(
+                estado='pendiente'
+            ).first()
+
+            if propuesta_pendiente:
+                if propuesta_pendiente.proponente_id == perfil.id:
+                    return Response(
+                        {
+                            'error': (
+                                'Debes esperar a que la otra persona '
+                                'responda tu propuesta.'
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                propuesta_pendiente.estado = 'reemplazada'
+                propuesta_pendiente.save(
+                    update_fields=['estado']
+                )
+
+            propuesta = PropuestaPrecio.objects.create(
+                solicitud=solicitud,
+                proponente=perfil,
+                precio=precio,
+            )
+
+        respuesta = PropuestaPrecioSerializer(propuesta)
+
+        return Response(
+            {
+                'mensaje': 'Propuesta enviada correctamente.',
+                'propuesta': respuesta.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PropuestaPrecioRespuestaAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk, propuesta_id):
+        accion = request.data.get('accion')
+
+        if accion not in ['aceptar', 'rechazar']:
+            return Response(
+                {'error': 'La acción debe ser aceptar o rechazar.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            try:
+                perfil = Perfil.objects.get(usuario=request.user)
+            except Perfil.DoesNotExist:
+                raise PermissionDenied(
+                    'Tu usuario no tiene un perfil configurado.'
+                )
+
+            try:
+                solicitud = (
+                    SolicitudServicio.objects
+                    .select_for_update()
+                    .get(pk=pk)
+                )
+            except SolicitudServicio.DoesNotExist:
+                return Response(
+                    {'error': 'La solicitud no existe.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if perfil.id not in [
+                solicitud.cliente_id,
+                solicitud.profesional_id,
+            ]:
+                raise PermissionDenied(
+                    'No participas en esta solicitud.'
+                )
+
+            try:
+                propuesta = solicitud.propuestas.select_for_update().get(
+                    pk=propuesta_id
+                )
+            except PropuestaPrecio.DoesNotExist:
+                return Response(
+                    {'error': 'La propuesta no existe.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            if propuesta.estado != 'pendiente':
+                return Response(
+                    {'error': 'Esta propuesta ya fue respondida.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if propuesta.proponente_id == perfil.id:
+                return Response(
+                    {
+                        'error': (
+                            'No puedes responder tu propia propuesta.'
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            if solicitud.estado != 'pendiente':
+                return Response(
+                    {
+                        'error': (
+                            'La solicitud ya no está en negociación.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if accion == 'aceptar':
+                propuesta.estado = 'aceptada'
+                propuesta.save(update_fields=['estado'])
+
+                solicitud.precio_acordado = propuesta.precio
+                solicitud.estado = 'aceptada'
+                solicitud.save(
+                    update_fields=['precio_acordado', 'estado']
+                )
+
+                mensaje = (
+                    'Propuesta aceptada. El precio quedó acordado.'
+                )
+
+            else:
+                propuesta.estado = 'rechazada'
+                propuesta.save(update_fields=['estado'])
+
+                mensaje = 'Propuesta rechazada.'
+
+        return Response({
+            'mensaje': mensaje,
+            'propuesta': PropuestaPrecioSerializer(propuesta).data,
         })

@@ -379,6 +379,10 @@ def iniciar_sesion(request):
         )
 
     perfil = usuario.perfil
+    if usuario.is_superuser or usuario.is_staff:
+        rol = 'administrador'
+    else:
+        rol = perfil.rol
 
     challenge = signing.dumps(
         {
@@ -394,7 +398,8 @@ def iniciar_sesion(request):
         return Response({
             'mensaje': 'Ingresa el código de Microsoft Authenticator.',
             'mfa_required': True,
-            'challenge': challenge
+            'challenge': challenge,
+            'rol': rol
         })
 
     imagen_base64 = generar_codigo_qr(
@@ -406,8 +411,9 @@ def iniciar_sesion(request):
         'mensaje': 'Configura Microsoft Authenticator para continuar.',
         'mfa_setup_required': True,
         'challenge': challenge,
-        'codigo_qr': imagen_base64
-    })
+        'codigo_qr': imagen_base64,
+        'rol': rol
+})
 
 
 # =========================================================
@@ -615,11 +621,19 @@ def verificar_codigo_login(request):
             codigos_recuperacion = None
 
         # 10. Generar JWT.
+        # 10. Generar JWT.
         refresh = RefreshToken.for_user(usuario)
+
+        # Obtener el rol del usuario.
+        if usuario.is_superuser or usuario.is_staff:
+            rol = 'administrador'
+        else:
+            rol = perfil.rol
 
         respuesta = {
             'mensaje': 'Inicio de sesión exitoso.',
             'usuario': usuario.username,
+            'rol': rol,
             'refresh': str(refresh),
             'access': str(refresh.access_token)
         }
