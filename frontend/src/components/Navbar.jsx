@@ -1,9 +1,25 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth.js';
 
+const INICIO = { ruta: '/', texto: 'Inicio', exacto: true };
+const SERVICIOS = { ruta: '/servicios', texto: 'Servicios' };
+const PROFESIONALES = { ruta: '/profesionales', texto: 'Profesionales' };
+const SOLICITUDES = { ruta: '/solicitudes', texto: 'Solicitudes' };
+const PANEL = { ruta: '/panel', texto: 'Panel' };
+
+const ENLACES_POR_ROL = {
+  cliente: [INICIO, SERVICIOS, PROFESIONALES, SOLICITUDES],
+  profesional: [INICIO, SOLICITUDES],
+  administrador: [INICIO, SERVICIOS, PROFESIONALES, PANEL],
+};
+
+const ENLACES_PUBLICOS = [INICIO, SERVICIOS, PROFESIONALES, SOLICITUDES];
+
 function Navbar() {
   const { sesion, cerrarSesion } = useAuth();
   const navigate = useNavigate();
+
+  const enlaces = (sesion && ENLACES_POR_ROL[sesion.rol]) || ENLACES_PUBLICOS;
 
   function salir() {
     cerrarSesion();
@@ -17,10 +33,11 @@ function Navbar() {
       </Link>
 
       <nav className="menu" aria-label="Navegación principal">
-        <NavLink to="/" end>Inicio</NavLink>
-        <NavLink to="/servicios">Servicios</NavLink>
-        <NavLink to="/profesionales">Profesionales</NavLink>
-        <NavLink to="/solicitudes">Solicitudes</NavLink>
+        {enlaces.map((enlace) => (
+          <NavLink key={enlace.ruta} to={enlace.ruta} end={enlace.exacto}>
+            {enlace.texto}
+          </NavLink>
+        ))}
       </nav>
 
       {sesion ? (

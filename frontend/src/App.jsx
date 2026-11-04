@@ -10,6 +10,7 @@ import Profesionales from './pages/Profesionales.jsx';
 import PerfilProfesional from './pages/PerfilProfesional.jsx';
 import Solicitudes from './pages/Solicitudes.jsx';
 import NuevaSolicitud from './pages/NuevaSolicitud.jsx';
+import Panel from './pages/Panel.jsx';
 import Login from './pages/Login.jsx';
 import Registro from './pages/Registro.jsx';
 
@@ -36,7 +37,7 @@ function App() {
           <Route
             path="/solicitudes"
             element={
-              <RutaProtegida>
+              <RutaProtegida roles={['cliente', 'profesional']}>
                 <Solicitudes />
               </RutaProtegida>
             }
@@ -44,8 +45,16 @@ function App() {
           <Route
             path="/solicitudes/nueva/:id"
             element={
-              <RutaProtegida>
+              <RutaProtegida roles={['cliente']}>
                 <NuevaSolicitud />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="/panel"
+            element={
+              <RutaProtegida roles={['administrador']}>
+                <Panel />
               </RutaProtegida>
             }
           />

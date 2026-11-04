@@ -13,7 +13,7 @@ export function listarOfertas() {
   return enviar('/ofertas/');
 }
 
-// Con sesión
+// Solicitudes (con sesión)
 export function listarSolicitudes() {
   return peticionAutenticada('/solicitudes/');
 }
@@ -30,4 +30,26 @@ export function cambiarEstadoSolicitud(id, estado) {
     metodo: 'PATCH',
     cuerpo: { estado },
   });
+}
+
+// Negociación de precios (con sesión)
+export function listarPropuestas(solicitudId) {
+  return peticionAutenticada(`/solicitudes/${solicitudId}/propuestas/`);
+}
+
+export function crearPropuesta(solicitudId, precio) {
+  return peticionAutenticada(`/solicitudes/${solicitudId}/propuestas/`, {
+    metodo: 'POST',
+    cuerpo: { precio },
+  });
+}
+
+export function responderPropuesta(solicitudId, propuestaId, accion) {
+  return peticionAutenticada(
+    `/solicitudes/${solicitudId}/propuestas/${propuestaId}/`,
+    {
+      metodo: 'PATCH',
+      cuerpo: { accion },
+    },
+  );
 }

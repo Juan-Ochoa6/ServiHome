@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { listarOfertas } from '../services/catalogo.js';
 import { useCargar } from '../hooks/useCargar.js';
+import { useAuth } from '../auth/useAuth.js';
 import { formatearPrecio } from '../utils/formato.js';
 import { agruparPorProfesional, categoriasDe } from '../utils/profesionales.js';
 import EstadoCarga from '../components/EstadoCarga.jsx';
@@ -8,7 +9,11 @@ import IconoCategoria from '../components/IconoCategoria.jsx';
 
 function PerfilProfesional() {
   const { id } = useParams();
+  const { sesion } = useAuth();
   const { datos, cargando, error, recargar } = useCargar(listarOfertas);
+
+  // Solo los clientes (o quien aún no inició sesión) pueden solicitar servicios.
+  const puedeSolicitar = !sesion || sesion.rol === 'cliente';
 
   const profesional = datos
     ? agruparPorProfesional(datos).find((item) => item.id === Number(id))
@@ -78,9 +83,11 @@ function PerfilProfesional() {
                 )}
                 <span className="oferta-precio">{formatearPrecio(oferta.precio)}</span>
               </div>
-              <Link className="boton-contactar" to={`/solicitudes/nueva/${oferta.id}`}>
-                Solicitar servicio
-              </Link>
+              {puedeSolicitar && (
+                <Link className="boton-contactar" to={`/solicitudes/nueva/${oferta.id}`}>
+                  Solicitar servicio
+                </Link>
+              )}
             </div>
           ))}
         </div>

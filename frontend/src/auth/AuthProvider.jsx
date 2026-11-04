@@ -8,7 +8,12 @@ import {
 } from '../services/api.js';
 
 function AuthProvider({ children }) {
-  const [sesion, setSesion] = useState(leerSesion);
+  // Una sesión guardada sin rol es de una versión anterior: se ignora
+  // y el usuario vuelve a iniciar sesión.
+  const [sesion, setSesion] = useState(() => {
+    const guardada = leerSesion();
+    return guardada?.rol ? guardada : null;
+  });
 
   // Si la API no pudo renovar el token, cierra la sesión en pantalla.
   useEffect(() => {
@@ -24,8 +29,7 @@ function AuthProvider({ children }) {
       access: respuesta.access,
       refresh: respuesta.refresh,
       usuario: respuesta.usuario,
-      // El backend todavía no devuelve el rol en el login (ver nota al final).
-      rol: respuesta.rol ?? null,
+      rol: respuesta.rol ?? null, // cliente | profesional | administrador
     };
     guardarSesion(nueva);
     setSesion(nueva);

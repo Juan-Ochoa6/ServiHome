@@ -312,3 +312,64 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
   .oferta-item { flex-direction: column; align-items: stretch; }
   .oferta-item .boton-contactar { width: 100%; }
 }
+/* ===== Negociación de precios ===== */
+.mensaje-info { background: #e8f1fb; color: #0f4c81; }
+
+.negociacion {
+  display: flex; flex-direction: column; gap: 12px; margin-top: 10px; padding: 16px;
+  border: 1px solid #e3ebe5; border-radius: 12px; background: #f8fbf8;
+}
+.propuestas-lista { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.propuesta-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 12px; border: 1px solid #e3ebe5; border-radius: 10px; background: #fff;
+}
+.propuesta-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.propuesta-info strong { color: #24392b; }
+
+.negociacion-respuesta { display: flex; flex-direction: column; gap: 10px; }
+.negociacion-respuesta p { color: #24392b; }
+
+.propuesta-formulario { display: flex; flex-direction: column; gap: 8px; }
+.propuesta-formulario label { color: #24392b; font-size: .85rem; font-weight: 700; }
+.propuesta-campo { display: flex; flex-wrap: wrap; gap: 10px; }
+.propuesta-campo input {
+  flex: 1; min-width: 140px; padding: 11px 14px; border: 1px solid #d7e3da;
+  border-radius: 12px; background: #fff; color: #20332c;
+}
+.propuesta-campo input:focus { outline: none; border-color: #39845a; box-shadow: 0 0 0 3px #39845a20; }
+
+.estado-propuesta-aceptada { background: #e3f4e7; color: #1f6b43; }
+.estado-propuesta-rechazada { background: #fdecea; color: #8c1d18; }
+.estado-propuesta-reemplazada { background: #eceff1; color: #56645d; }
+/* ===== Panel de administrador ===== */
+.pestanas { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.pestana {
+  padding: 10px 18px; border: 1px solid #d7e3da; border-radius: 999px; background: #fff;
+  color: #56645d; font-weight: 700; cursor: pointer;
+}
+.pestana:hover { background: #edf6ef; }
+.pestana-activa, .pestana-activa:hover { border-color: #23865b; background: #23865b; color: #fff; }
+
+.panel-lista { display: grid; gap: 16px; }
+.tarjeta-panel {
+  display: flex; flex-direction: column; gap: 14px; padding: 22px;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+  box-shadow: 0 5px 18px #23462d0b;
+}
+.tarjeta-panel-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tarjeta-panel-cabecera strong { color: #24392b; font-size: 1.05rem; }
+.datos-panel { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 0; }
+.datos-panel dt { color: #718078; font-size: .88rem; font-weight: 700; }
+.datos-panel dd { margin: 0; color: #24392b; overflow-wrap: anywhere; }
+
+.estado-verificacion-en_revision { background: #e1f0fb; color: #0f4c81; }
+.estado-verificacion-aprobado { background: #e3f4e7; color: #1f6b43; }
+.estado-verificacion-rechazado { background: #fdecea; color: #8c1d18; }
+
+.boton-contactar:disabled, .boton-secundario:disabled { opacity: .55; cursor: not-allowed; }
+
+@media (max-width: 600px) {
+  .datos-panel { grid-template-columns: 1fr; gap: 2px; }
+  .datos-panel dd { margin-bottom: 8px; }
+}
