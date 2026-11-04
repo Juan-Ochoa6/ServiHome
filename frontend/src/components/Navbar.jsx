@@ -15,6 +15,12 @@ const ENLACES_POR_ROL = {
 
 const ENLACES_PUBLICOS = [INICIO, SERVICIOS, PROFESIONALES, SOLICITUDES];
 
+const ETIQUETAS_ROL = {
+  cliente: 'Cliente',
+  profesional: 'Profesional',
+  administrador: 'Administrador',
+};
+
 function Navbar() {
   const { sesion, cerrarSesion } = useAuth();
   const navigate = useNavigate();
@@ -43,6 +49,7 @@ function Navbar() {
       {sesion ? (
         <div className="navbar-sesion">
           <span>Hola, {sesion.usuario}</span>
+          <span className="etiqueta-rol">{ETIQUETAS_ROL[sesion.rol] ?? sesion.rol}</span>
           <button type="button" className="boton-secundario" onClick={salir}>
             Cerrar sesión
           </button>

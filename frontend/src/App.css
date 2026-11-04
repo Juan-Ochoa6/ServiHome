@@ -373,3 +373,21 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
   .datos-panel { grid-template-columns: 1fr; gap: 2px; }
   .datos-panel dd { margin-bottom: 8px; }
 }
+/* ===== Mejoras de claridad ===== */
+.navbar-sesion .etiqueta-rol {
+  padding: 3px 10px; border-radius: 999px; background: #e3f4e7;
+  color: #1f6b43; font-size: .75rem; font-weight: 700;
+}
+
+.ayuda-negociacion { color: #56645d; font-size: .85rem; }
+.ayuda-negociacion summary { color: #23865b; font-weight: 700; cursor: pointer; }
+.ayuda-negociacion p { margin: 8px 0 0; line-height: 1.6; }
+/* ===== Footer: créditos ===== */
+.footer-legal { grid-column: 1 / -1; flex-basis: 100%; width: 100%; }
+.footer-legal p { margin: 0; }
+.footer-creditos {
+  display: flex; flex-wrap: wrap; gap: 6px 20px;
+  margin: 10px 0 0; padding: 0; list-style: none; font-size: .8rem;
+}
+.footer-creditos a { color: #65736b; text-decoration: none; }
+.footer-creditos a:hover { color: #23865b; text-decoration: underline; }
