@@ -1,5 +1,6 @@
 
 from django.db import models
+from django.core.exceptions import ValidationError
 
 
 class Categoria(models.Model):
@@ -36,39 +37,95 @@ class Servicio(models.Model):
 
 class ServicioProfesional(models.Model):
     ESTADOS_APROBACION = [
-    ('pendiente', 'Pendiente de aprobación'),
-    ('aprobado', 'Aprobado'),
-    ('rechazado', 'Rechazado'),
+        ('pendiente', 'Pendiente de aprobación'),
+        ('aprobado', 'Aprobado'),
+        ('rechazado', 'Rechazado'),
     ]
+
     estado_aprobacion = models.CharField(
-    max_length=20,
-    choices=ESTADOS_APROBACION,
-    default='pendiente'
+        max_length=20,
+        choices=ESTADOS_APROBACION,
+        default='pendiente'
     )
+
     servicio = models.ForeignKey(
         Servicio,
         on_delete=models.CASCADE,
         related_name='ofertas_profesionales'
     )
+
     profesional = models.ForeignKey(
         'usuarios.Perfil',
         on_delete=models.CASCADE,
         related_name='ofertas_servicios'
     )
-    precio = models.DecimalField(max_digits=10, decimal_places=2)
+
+    precio = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=['servicio', 'profesional'],
                 name='servicio_profesional_unico'
-            )
+            ),
+            models.CheckConstraint(
+                condition=models.Q(precio__gte=30000),
+                name='oferta_precio_min_30000'
+            ),
         ]
+
+    def clean(self):
+        if self.precio is not None and self.precio < 30000:
+            raise ValidationError({
+                'precio': 'El precio mínimo permitido es de $30.000 COP.'
+            })
+
+        if self.profesional_id:
+            if self.profesional.rol != 'profesional':
+                raise ValidationError({
+                    'profesional': 'El perfil debe pertenecer a un profesional.'
+                })
 
     def __str__(self):
         return f'{self.profesional} - {self.servicio}'
 
+class TrabajoPortafolio(models.Model):
+    profesional = models.ForeignKey(
+        'usuarios.Perfil',
+        on_delete=models.CASCADE,
+        related_name='trabajos_portafolio'
+    )
 
+    servicio = models.ForeignKey(
+        Servicio,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='trabajos_portafolio'
+    )
+
+    titulo = models.CharField(max_length=150)
+
+    descripcion = models.TextField()
+
+    imagen = models.ImageField(
+        upload_to='portafolio_profesionales/'
+    )
+
+    fecha_publicacion = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    activo = models.BooleanField(default=True)
+
+    def __str__(self):
+        return (
+            f'{self.titulo} - '
+            f'{self.profesional.usuario.username}'
+        )
 class SolicitudServicio(models.Model):
     ESTADOS = [
         ('pendiente', 'Pendiente'),
@@ -84,37 +141,63 @@ class SolicitudServicio(models.Model):
         on_delete=models.PROTECT,
         related_name='solicitudes_realizadas'
     )
+
     profesional = models.ForeignKey(
         'usuarios.Perfil',
         on_delete=models.PROTECT,
         related_name='solicitudes_recibidas'
     )
+
     servicio = models.ForeignKey(
         Servicio,
         on_delete=models.PROTECT,
         related_name='solicitudes'
     )
+
     descripcion = models.TextField()
     direccion_servicio = models.CharField(max_length=255)
     fecha_solicitada = models.DateTimeField()
+
     estado = models.CharField(
         max_length=20,
         choices=ESTADOS,
         default='pendiente'
     )
+
     precio_acordado = models.DecimalField(
         max_digits=10,
         decimal_places=2,
         null=True,
         blank=True
     )
+
     fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(precio_acordado__isnull=True) |
+                    models.Q(precio_acordado__gte=30000)
+                ),
+                name='solicitud_precio_min_30000'
+            ),
+        ]
+
+    def clean(self):
+        if (
+            self.precio_acordado is not None
+            and self.precio_acordado < 30000
+        ):
+            raise ValidationError({
+                'precio_acordado': 'El precio mínimo permitido es de $30.000 COP.'
+            })
 
     def __str__(self):
         return f'Solicitud #{self.pk} - {self.get_estado_display()}'
 
-class PropuestaPrecio(models.Model):
 
+class PropuestaPrecio(models.Model):
     ESTADOS = [
         ('pendiente', 'Pendiente'),
         ('aceptada', 'Aceptada'),
@@ -147,12 +230,18 @@ class PropuestaPrecio(models.Model):
 
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
-    def clean(self):
-        from django.core.exceptions import ValidationError
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(precio__gte=30000),
+                name='propuesta_precio_min_30000'
+            ),
+        ]
 
-        if self.precio <= 0:
+    def clean(self):
+        if self.precio is not None and self.precio < 30000:
             raise ValidationError({
-                'precio': 'El precio debe ser mayor que cero.'
+                'precio': 'El precio mínimo permitido es de $30.000 COP.'
             })
 
         if self.proponente_id and self.solicitud_id:

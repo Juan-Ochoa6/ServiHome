@@ -33,8 +33,16 @@ class Perfil(models.Model):
     estado_verificacion = models.CharField(
     max_length=20,
     choices=ESTADOS_VERIFICACION,
-    default='no_aplica'
+    default='no_aplica',
+    
     )
+
+    estado_identidad = models.CharField(
+    max_length=20,
+    choices=ESTADOS_VERIFICACION,
+    default='pendiente'
+    )
+    
 
     telefono = models.CharField(max_length=20, blank=True)
     direccion = models.CharField(max_length=255, blank=True)
@@ -60,7 +68,50 @@ class Perfil(models.Model):
 
     def __str__(self):
         return f'{self.usuario.username} - {self.get_rol_display()}'
+class DocumentoVerificacion(models.Model):
 
+    TIPOS_DOCUMENTO = [
+        ('identidad', 'Documento de identidad'),
+        ('experiencia', 'Certificado de experiencia'),
+        ('acreditacion', 'Certificación o acreditación'),
+    ]
+
+    ESTADOS = [
+        ('pendiente', 'Pendiente'),
+        ('aprobado', 'Aprobado'),
+        ('rechazado', 'Rechazado'),
+    ]
+
+    perfil = models.ForeignKey(
+        Perfil,
+        on_delete=models.CASCADE,
+        related_name='documentos_verificacion'
+    )
+
+    tipo = models.CharField(
+        max_length=20,
+        choices=TIPOS_DOCUMENTO
+    )
+
+    archivo = models.FileField(
+        upload_to='verificacion_profesionales/'
+    )
+
+    estado = models.CharField(
+        max_length=20,
+        choices=ESTADOS,
+        default='pendiente'
+    )
+
+    observacion = models.TextField(blank=True)
+
+    fecha_subida = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return (
+        f'{self.perfil.usuario.username} - '
+        f'{self.get_tipo_display()}'
+    )
 
 class DesafioLogin(models.Model):
 

@@ -4,17 +4,24 @@ import hashlib
 import secrets
 from datetime import datetime, timezone as datetime_timezone
 from io import BytesIO
-
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import generics
+from .models import DocumentoVerificacion
+from .serializers import (
+    DocumentoVerificacionSerializer,
+    AdminDocumentoVerificacionSerializer,
+)
 import pyotp
-import qrcode
 
+import qrcode
+from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import authenticate, get_user_model
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
 from django.core.signing import BadSignature, SignatureExpired
 from django.db import transaction
 from django.utils import timezone
-
+from rest_framework.exceptions import ValidationError
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import (
@@ -32,7 +39,10 @@ from drf_spectacular.utils import (
 )
 
 from usuarios.models import DesafioLogin, CodigoRecuperacionMFA
-from .serializers import RegistroUsuarioSerializer
+from .serializers import (
+    RegistroUsuarioSerializer,
+    MiPerfilSerializer,
+)
 from .models import Perfil
 
 
@@ -842,3 +852,154 @@ def cambiar_estado_profesional(request, pk):
         'estado_verificacion': perfil.estado_verificacion,
         'disponible': perfil.disponible,
     })
+@extend_schema(
+    tags=['Profesionales'],
+    summary='Activar o pausar disponibilidad',
+    description='Permite al profesional cambiar su disponibilidad.',
+    request={
+        'application/json': {
+            'type': 'object',
+            'properties': {
+                'disponible': {'type': 'boolean'}
+            },
+            'required': ['disponible']
+        }
+    }
+)
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def cambiar_disponibilidad(request):
+    """Permite al profesional activar o pausar su disponibilidad."""
+
+    try:
+        perfil = request.user.perfil
+    except Perfil.DoesNotExist:
+        return Response(
+            {'error': 'No se encontró el perfil del usuario.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if perfil.rol != 'profesional':
+        return Response(
+            {'error': 'Solo los profesionales pueden cambiar su disponibilidad.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if perfil.estado_verificacion != 'aprobado':
+        return Response(
+            {'error': 'Debes estar aprobado para activar tu disponibilidad.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    disponible = request.data.get('disponible')
+
+    if not isinstance(disponible, bool):
+        return Response(
+            {'error': 'El campo disponible debe ser true o false.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    perfil.disponible = disponible
+    perfil.save(update_fields=['disponible'])
+
+    return Response({
+        'mensaje': 'Disponibilidad actualizada correctamente.',
+        'disponible': perfil.disponible
+    })
+class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
+    serializer_class = DocumentoVerificacionSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        return DocumentoVerificacion.objects.filter(
+            perfil=perfil
+        ).order_by('-fecha_subida')
+
+    def perform_create(self, serializer):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        tipo = serializer.validated_data['tipo']
+
+        if perfil.rol == 'cliente' and tipo != 'identidad':
+            raise ValidationError(
+                'Los clientes solamente pueden subir documentos de identidad.'
+            )
+
+        serializer.save(perfil=perfil)
+class AdminDocumentosVerificacionAPIView(generics.ListAPIView):
+    serializer_class = AdminDocumentoVerificacionSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        queryset = DocumentoVerificacion.objects.select_related(
+            'perfil__usuario'
+        ).order_by('-fecha_subida')
+
+        estado = self.request.query_params.get('estado')
+
+        if estado:
+            queryset = queryset.filter(estado=estado)
+
+        return queryset
+class AdminDocumentoVerificacionDetailAPIView(generics.UpdateAPIView):
+    queryset = DocumentoVerificacion.objects.select_related('perfil')
+    serializer_class = AdminDocumentoVerificacionSerializer
+    permission_classes = [IsAdminUser]
+    http_method_names = ['patch']
+
+    def perform_update(self, serializer):
+        documento = serializer.save()
+
+        if documento.tipo == 'identidad':
+            documento.perfil.estado_identidad = documento.estado
+            documento.perfil.save(
+                update_fields=['estado_identidad']
+            )
+class MiVerificacionAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        perfil = Perfil.objects.get(usuario=request.user)
+
+        documentos = DocumentoVerificacion.objects.filter(
+            perfil=perfil
+        ).order_by('-fecha_subida')
+
+        return Response({
+            'estado_verificacion': perfil.estado_verificacion,
+            'estado_identidad': perfil.estado_identidad,
+            'disponible': perfil.disponible,
+            'documentos': DocumentoVerificacionSerializer(
+                documentos,
+                many=True
+            ).data
+        })
+
+class MiPerfilAPIView(generics.RetrieveUpdateAPIView):
+    serializer_class = MiPerfilSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_object(self):
+        try:
+            return Perfil.objects.select_related(
+                'usuario'
+            ).get(usuario=self.request.user)
+
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )

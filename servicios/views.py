@@ -1,5 +1,5 @@
 from django.db import transaction
-
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,9 +8,8 @@ from rest_framework.permissions import (
     IsAuthenticated,
     IsAdminUser,
 )
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.exceptions import PermissionDenied
-
-from drf_spectacular.utils import extend_schema, OpenApiResponse
 
 from usuarios.models import Perfil
 
@@ -20,6 +19,7 @@ from .models import (
     SolicitudServicio,
     ServicioProfesional,
     PropuestaPrecio,
+    TrabajoPortafolio,
 )
 
 from .serializers import (
@@ -28,6 +28,8 @@ from .serializers import (
     SolicitudServicioSerializer,
     OfertaPublicaSerializer,
     PropuestaPrecioSerializer,
+    ServicioProfesionalSerializer,
+    TrabajoPortafolioSerializer,
 )
 
 class OfertaPublicaListAPIView(generics.ListAPIView):
@@ -41,7 +43,7 @@ class OfertaPublicaListAPIView(generics.ListAPIView):
             ServicioProfesional.objects
             .filter(
                 estado_aprobacion='aprobado',
-                profesional__estado_verificacion='aprobado',
+                profesional__estado_identidad='aprobado',
                 profesional__disponible=True,
                 servicio__activo=True,
             )
@@ -51,17 +53,7 @@ class OfertaPublicaListAPIView(generics.ListAPIView):
             )
             .order_by('id')
         )
-from .models import (
-    Categoria,
-    Servicio,
-    SolicitudServicio,
-    ServicioProfesional,
-)
-from .serializers import (
-    CategoriaSerializer,
-    ServicioSerializer,
-    SolicitudServicioSerializer,
-)
+
 
 
 class CategoriaListAPIView(generics.ListAPIView):
@@ -276,8 +268,8 @@ class OfertaPendienteListAPIView(APIView):
                 'id': oferta.id,
                 'profesional_id': oferta.profesional_id,
                 'profesional': oferta.profesional.usuario.username,
-                'estado_profesional': (
-                    oferta.profesional.estado_verificacion
+                'estado_identidad': (
+                oferta.profesional.estado_identidad
                 ),
                 'servicio_id': oferta.servicio_id,
                 'servicio': oferta.servicio.nombre,
@@ -353,13 +345,13 @@ class OfertaEstadoAPIView(APIView):
                 )
 
             if nuevo_estado == 'aprobado':
-                if oferta.profesional.estado_verificacion != 'aprobado':
+                if oferta.profesional.estado_identidad != 'aprobado':
                     return Response(
                         {
                             'error': (
-                                'No puedes aprobar una oferta de un '
-                                'profesional que todavía no está aprobado.'
-                            )
+                            'No puedes aprobar una oferta de un '
+                            'profesional cuya identidad no esté aprobada.'
+                        )
                         },
                         status=status.HTTP_400_BAD_REQUEST
                     )
@@ -424,7 +416,14 @@ class PropuestaPrecioListCreateAPIView(APIView):
             )
 
             return Response(serializer.data)
-
+    @extend_schema(
+        request=PropuestaPrecioSerializer,
+        responses={
+            201: OpenApiResponse(
+                response=PropuestaPrecioSerializer
+            ),
+        },
+    )
     def post(self, request, pk):
         serializer = PropuestaPrecioSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -570,6 +569,14 @@ class PropuestaPrecioRespuestaAPIView(APIView):
                 propuesta.estado = 'aceptada'
                 propuesta.save(update_fields=['estado'])
 
+                solicitud.propuestas.filter(
+                    estado='pendiente'
+                ).exclude(
+                    pk=propuesta.id
+                ).update(
+                    estado='reemplazada'
+                )
+
                 solicitud.precio_acordado = propuesta.precio
                 solicitud.estado = 'aceptada'
                 solicitud.save(
@@ -590,3 +597,155 @@ class PropuestaPrecioRespuestaAPIView(APIView):
             'mensaje': mensaje,
             'propuesta': PropuestaPrecioSerializer(propuesta).data,
         })
+class ServicioProfesionalListCreateAPIView(generics.ListCreateAPIView):
+    serializer_class = ServicioProfesionalSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_perfil(self):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        if perfil.rol != 'profesional':
+            raise PermissionDenied(
+                'Solo los profesionales pueden gestionar ofertas.'
+            )
+
+        return perfil
+
+    def get_queryset(self):
+        perfil = self.get_perfil()
+
+        return ServicioProfesional.objects.filter(
+            profesional=perfil
+        ).select_related('servicio')
+
+    def perform_create(self, serializer):
+        perfil = self.get_perfil()
+
+        if perfil.estado_identidad != 'aprobado':
+            raise PermissionDenied(
+            'Debes tener tu identidad aprobada para ofrecer servicios.'
+        )
+
+        serializer.save(
+            profesional=perfil,
+            estado_aprobacion='pendiente'
+    )
+
+
+class ServicioProfesionalDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ServicioProfesionalSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_perfil(self):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        if perfil.rol != 'profesional':
+            raise PermissionDenied(
+                'Solo los profesionales pueden gestionar ofertas.'
+            )
+
+        return perfil
+
+    def get_queryset(self):
+        perfil = self.get_perfil()
+
+        return ServicioProfesional.objects.filter(
+            profesional=perfil
+        ).select_related('servicio')
+
+    def perform_update(self, serializer):
+        perfil = self.get_perfil()
+
+        if perfil.estado_identidad != 'aprobado':
+            raise PermissionDenied(
+            'Debes tener tu identidad aprobada para modificar tus ofertas.'
+        )
+
+        serializer.save(
+        estado_aprobacion='pendiente'
+        )
+
+class MiPortafolioListCreateAPIView(generics.ListCreateAPIView):
+    
+    serializer_class = TrabajoPortafolioSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+    def get_perfil(self):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        if perfil.rol != 'profesional':
+            raise PermissionDenied(
+                'Solo los profesionales pueden gestionar su portafolio.'
+            )
+
+        return perfil
+
+    def get_queryset(self):
+        perfil = self.get_perfil()
+
+        return TrabajoPortafolio.objects.filter(
+            profesional=perfil
+        ).select_related('servicio')
+
+    def perform_create(self, serializer):
+        perfil = self.get_perfil()
+
+        serializer.save(
+            profesional=perfil
+        )
+
+
+class MiPortafolioDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = TrabajoPortafolioSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        if perfil.rol != 'profesional':
+            raise PermissionDenied(
+                'Solo los profesionales pueden gestionar su portafolio.'
+            )
+
+        return TrabajoPortafolio.objects.filter(
+            profesional=perfil
+        )
+class PortafolioProfesionalListAPIView(generics.ListAPIView):
+    serializer_class = TrabajoPortafolioSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        profesional_id = self.kwargs['profesional_id']
+
+        return (
+            TrabajoPortafolio.objects
+            .filter(
+                profesional_id=profesional_id,
+                profesional__rol='profesional',
+                profesional__estado_identidad='aprobado',
+                activo=True,
+            )
+            .select_related('profesional__usuario', 'servicio')
+            .order_by('-fecha_publicacion')
+        )
