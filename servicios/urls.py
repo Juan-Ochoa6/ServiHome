@@ -10,6 +10,11 @@ from .views import (
     OfertaPublicaListAPIView,
     PropuestaPrecioListCreateAPIView,
     PropuestaPrecioRespuestaAPIView,
+    ServicioProfesionalListCreateAPIView,
+    ServicioProfesionalDetailAPIView,
+    MiPortafolioListCreateAPIView,
+    MiPortafolioDetailAPIView,
+    PortafolioProfesionalListAPIView,   
 )
 
 urlpatterns = [
@@ -58,4 +63,33 @@ urlpatterns = [
         PropuestaPrecioRespuestaAPIView.as_view(),
         name='responder-propuesta-precio',
     ),
+    path(
+    'mis-ofertas/',
+    ServicioProfesionalListCreateAPIView.as_view(),
+    name='mis-ofertas'
+    ),
+    path(
+    'mis-ofertas/<int:pk>/',
+    ServicioProfesionalDetailAPIView.as_view(),
+    name='detalle-mi-oferta'
+    ),
+    # PORTAFOLIO PROFESIONAL
+
+    path(
+    'mi-portafolio/',
+    MiPortafolioListCreateAPIView.as_view(),
+    name='mi-portafolio'
+),
+
+    path(
+    'mi-portafolio/<int:pk>/',
+    MiPortafolioDetailAPIView.as_view(),
+    name='mi-portafolio-detail'
+),
+
+    path(
+    'profesionales/<int:profesional_id>/portafolio/',
+    PortafolioProfesionalListAPIView.as_view(),
+    name='portafolio-profesional'
+),
 ]

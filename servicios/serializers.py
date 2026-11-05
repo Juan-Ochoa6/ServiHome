@@ -6,6 +6,7 @@ from .models import (
     SolicitudServicio,
     ServicioProfesional,
     PropuestaPrecio,
+    TrabajoPortafolio
 )
 from usuarios.models import Perfil
 
@@ -239,9 +240,92 @@ class PropuestaPrecioSerializer(serializers.ModelSerializer):
         ]
 
     def validate_precio(self, precio):
-        if precio <= 0:
+        if precio < 30000:
             raise serializers.ValidationError(
-                'El precio debe ser mayor que cero.'
-            )
+            'El precio mínimo permitido es de $30.000 COP.'
+        )
 
         return precio
+class ServicioProfesionalSerializer(serializers.ModelSerializer):
+    servicio_nombre = serializers.CharField(
+        source='servicio.nombre',
+        read_only=True
+    )
+
+    class Meta:
+        model = ServicioProfesional
+        fields = [
+            'id',
+            'servicio',
+            'servicio_nombre',
+            'precio',
+            'estado_aprobacion',
+        ]
+        read_only_fields = [
+            'id',
+            'estado_aprobacion',
+        ]
+
+    def validate_precio(self, value):
+        if value < 30000:
+            raise serializers.ValidationError(
+                'El precio mínimo de una oferta es $30.000 COP.'
+            )
+        return value
+
+    def validate_servicio(self, value):
+        if not value.activo:
+            raise serializers.ValidationError(
+                'No puedes ofrecer un servicio que está inactivo.'
+            )
+        return value
+    def validate(self, attrs):
+        servicio = attrs.get(
+        'servicio',
+        self.instance.servicio if self.instance else None
+    )
+
+        if servicio:
+            profesional = self.context['request'].user.perfil
+
+        existe = ServicioProfesional.objects.filter(
+            profesional=profesional,
+            servicio=servicio
+        ).exclude(
+            pk=self.instance.pk if self.instance else None
+        ).exists()
+
+        if existe:
+            raise serializers.ValidationError({
+                'servicio': 'Ya tienes una oferta registrada para este servicio.'
+            })
+
+        return attrs
+class TrabajoPortafolioSerializer(serializers.ModelSerializer):
+    profesional = serializers.ReadOnlyField(
+        source='profesional.usuario.username'
+    )
+
+    servicio_nombre = serializers.ReadOnlyField(
+        source='servicio.nombre'
+    )
+
+    class Meta:
+        model = TrabajoPortafolio
+        fields = [
+            'id',
+            'profesional',
+            'servicio',
+            'servicio_nombre',
+            'titulo',
+            'descripcion',
+            'imagen',
+            'fecha_publicacion',
+            'activo',
+        ]
+
+        read_only_fields = [
+            'id',
+            'profesional',
+            'fecha_publicacion',
+        ]

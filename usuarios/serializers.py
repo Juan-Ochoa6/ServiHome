@@ -2,7 +2,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Perfil
+
+from .models import Perfil, DocumentoVerificacion
 
 
 class RegistroUsuarioSerializer(serializers.ModelSerializer):
@@ -95,3 +96,115 @@ class RegistroUsuarioSerializer(serializers.ModelSerializer):
         perfil.save()
 
         return usuario
+class DocumentoVerificacionSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = DocumentoVerificacion
+        fields = [
+            'id',
+            'tipo',
+            'archivo',
+            'estado',
+            'observacion',
+            'fecha_subida',
+        ]
+
+        read_only_fields = [
+            'id',
+            'estado',
+            'observacion',
+            'fecha_subida',
+        ]
+
+class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
+    profesional_id = serializers.IntegerField(
+        source='perfil.id',
+        read_only=True
+    )
+    username = serializers.CharField(
+        source='perfil.usuario.username',
+        read_only=True
+    )
+    email = serializers.EmailField(
+        source='perfil.usuario.email',
+        read_only=True
+    )
+
+    class Meta:
+        model = DocumentoVerificacion
+        fields = [
+            'id',
+            'profesional_id',
+            'username',
+            'email',
+            'tipo',
+            'archivo',
+            'estado',
+            'observacion',
+            'fecha_subida',
+        ]
+
+        read_only_fields = [
+            'id',
+            'profesional_id',
+            'username',
+            'email',
+            'tipo',
+            'archivo',
+            'fecha_subida',
+        ]
+
+class MiPerfilSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        source='usuario.username',
+        read_only=True
+    )
+    email = serializers.EmailField(
+        source='usuario.email',
+        required=False
+    )
+    first_name = serializers.CharField(
+        source='usuario.first_name',
+        required=False,
+        allow_blank=True
+    )
+    last_name = serializers.CharField(
+        source='usuario.last_name',
+        required=False,
+        allow_blank=True
+    )
+
+    class Meta:
+        model = Perfil
+        fields = [
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'rol',
+            'telefono',
+            'direccion',
+            'descripcion_profesional',
+            'experiencia_anos',
+            'estado_verificacion',
+            'estado_identidad',
+            'disponible',
+        ]
+
+        read_only_fields = [
+            'rol',
+            'estado_verificacion',
+            'estado_identidad',
+            'disponible',
+        ]
+
+    def update(self, instance, validated_data):
+        datos_usuario = validated_data.pop('usuario', {})
+
+        for campo, valor in datos_usuario.items():
+            setattr(instance.usuario, campo, valor)
+
+        if datos_usuario:
+            instance.usuario.save()
+
+        return super().update(instance, validated_data)

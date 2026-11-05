@@ -29,7 +29,12 @@ function AuthProvider({ children }) {
       access: respuesta.access,
       refresh: respuesta.refresh,
       usuario: respuesta.usuario,
+<<<<<<< HEAD
       rol: respuesta.rol ?? null, // cliente | profesional | administrador
+=======
+      // Guardar el rol recibido desde Django.
+      rol: respuesta.rol ?? null,
+>>>>>>> 5b1dbd1 (Implementa mejoras de usuarios y servicios)
     };
     guardarSesion(nueva);
     setSesion(nueva);
