@@ -10,6 +10,8 @@ import Profesionales from './pages/Profesionales.jsx';
 import PerfilProfesional from './pages/PerfilProfesional.jsx';
 import Solicitudes from './pages/Solicitudes.jsx';
 import NuevaSolicitud from './pages/NuevaSolicitud.jsx';
+import MisServicios from './pages/MisServicios.jsx';
+import MiPortafolio from './pages/MiPortafolio.jsx';
 import Panel from './pages/Panel.jsx';
 import Login from './pages/Login.jsx';
 import Registro from './pages/Registro.jsx';
@@ -47,6 +49,22 @@ function App() {
             element={
               <RutaProtegida roles={['cliente']}>
                 <NuevaSolicitud />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="/mis-servicios"
+            element={
+              <RutaProtegida roles={['profesional']}>
+                <MisServicios />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="/mi-portafolio"
+            element={
+              <RutaProtegida roles={['profesional']}>
+                <MiPortafolio />
               </RutaProtegida>
             }
           />

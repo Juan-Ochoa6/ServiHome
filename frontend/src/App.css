@@ -391,3 +391,32 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 }
 .footer-creditos a { color: #65736b; text-decoration: none; }
 .footer-creditos a:hover { color: #23865b; text-decoration: underline; }
+/* ===== Mis servicios y portafolio ===== */
+.ayuda-pagina { margin: 0 0 20px; color: #65736b; font-size: .92rem; line-height: 1.6; }
+
+.formulario-panel {
+  display: flex; flex-direction: column; gap: 16px; margin-bottom: 28px; padding: 22px;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+}
+.formulario-panel h3 { margin: 0; color: #24392b; font-size: 1.05rem; }
+.formulario-panel textarea {
+  width: 100%; padding: 13px 14px; border: 1px solid #d7e3da; border-radius: 12px;
+  background: #fff; color: #20332c; font: inherit; resize: vertical;
+}
+.campo-check { display: flex; align-items: center; gap: 8px; color: #24392b; font-size: .92rem; }
+.campo-check input { width: auto; }
+
+.trabajos-grid {
+  display: grid; width: 100%; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.tarjeta-trabajo {
+  display: flex; flex-direction: column; overflow: hidden; text-align: left;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+  box-shadow: 0 5px 18px #23462d0b;
+}
+.tarjeta-trabajo img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: #eef3ef; }
+.trabajo-cuerpo { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 16px; }
+.trabajo-cuerpo h3 { margin: 0; color: #24392b; font-size: 1rem; }
+.trabajo-cuerpo p { margin: 0; color: #65736b; font-size: .88rem; line-height: 1.6; }
+.tarjeta-trabajo .formulario-panel { margin: 0; border: 0; border-radius: 0; }

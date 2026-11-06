@@ -84,15 +84,25 @@ function mensajeDeError(status, datos) {
 
 export async function enviar(ruta, { metodo = 'GET', cuerpo, token } = {}) {
   const encabezados = { Accept: 'application/json' };
-  if (cuerpo !== undefined) encabezados['Content-Type'] = 'application/json';
+  const esFormulario = typeof FormData !== 'undefined' && cuerpo instanceof FormData;
+
+  // Con FormData, el navegador pone solo el Content-Type (con su "boundary").
+  if (cuerpo !== undefined && !esFormulario) {
+    encabezados['Content-Type'] = 'application/json';
+  }
   if (token) encabezados.Authorization = `Bearer ${token}`;
+
+  let cuerpoEnviado;
+  if (cuerpo !== undefined) {
+    cuerpoEnviado = esFormulario ? cuerpo : JSON.stringify(cuerpo);
+  }
 
   let respuesta;
   try {
     respuesta = await fetch(`${API_URL}${ruta}`, {
       method: metodo,
       headers: encabezados,
-      body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
+      body: cuerpoEnviado,
     });
   } catch {
     throw new ErrorApi(0, null, mensajeDeError(0, null));
@@ -102,7 +112,7 @@ export async function enviar(ruta, { metodo = 'GET', cuerpo, token } = {}) {
   try {
     datos = await respuesta.json();
   } catch {
-    // La respuesta no trae cuerpo JSON.
+    // La respuesta no trae cuerpo JSON (por ejemplo, un DELETE devuelve 204).
   }
 
   if (!respuesta.ok) {

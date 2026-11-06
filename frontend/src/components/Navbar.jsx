@@ -5,11 +5,13 @@ const INICIO = { ruta: '/', texto: 'Inicio', exacto: true };
 const SERVICIOS = { ruta: '/servicios', texto: 'Servicios' };
 const PROFESIONALES = { ruta: '/profesionales', texto: 'Profesionales' };
 const SOLICITUDES = { ruta: '/solicitudes', texto: 'Solicitudes' };
+const MIS_SERVICIOS = { ruta: '/mis-servicios', texto: 'Mis servicios' };
+const PORTAFOLIO = { ruta: '/mi-portafolio', texto: 'Portafolio' };
 const PANEL = { ruta: '/panel', texto: 'Panel' };
 
 const ENLACES_POR_ROL = {
   cliente: [INICIO, SERVICIOS, PROFESIONALES, SOLICITUDES],
-  profesional: [INICIO, SOLICITUDES],
+  profesional: [INICIO, SOLICITUDES, MIS_SERVICIOS, PORTAFOLIO],
   administrador: [INICIO, SERVICIOS, PROFESIONALES, PANEL],
 };
 

@@ -1,5 +1,7 @@
+import { useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { listarOfertas } from '../services/catalogo.js';
+import { listarPortafolioPublico } from '../services/profesional.js';
 import { useCargar } from '../hooks/useCargar.js';
 import { useAuth } from '../auth/useAuth.js';
 import { formatearPrecio } from '../utils/formato.js';
@@ -11,6 +13,9 @@ function PerfilProfesional() {
   const { id } = useParams();
   const { sesion } = useAuth();
   const { datos, cargando, error, recargar } = useCargar(listarOfertas);
+
+  const cargarPortafolio = useCallback(() => listarPortafolioPublico(id), [id]);
+  const portafolio = useCargar(cargarPortafolio);
 
   // Solo los clientes (o quien aún no inició sesión) pueden solicitar servicios.
   const puedeSolicitar = !sesion || sesion.rol === 'cliente';
@@ -48,6 +53,7 @@ function PerfilProfesional() {
   }
 
   const categorias = categoriasDe(profesional);
+  const trabajos = portafolio.datos ?? [];
 
   return (
     <section className="seccion panel-flujo">
@@ -91,6 +97,26 @@ function PerfilProfesional() {
             </div>
           ))}
         </div>
+
+        {trabajos.length > 0 && (
+          <>
+            <h3 className="titulo-ofertas">Trabajos realizados</h3>
+            <div className="trabajos-grid">
+              {trabajos.map((trabajo) => (
+                <article className="tarjeta-trabajo" key={trabajo.id}>
+                  <img src={trabajo.imagen} alt={trabajo.titulo} loading="lazy" />
+                  <div className="trabajo-cuerpo">
+                    <h3>{trabajo.titulo}</h3>
+                    {trabajo.servicio_nombre && (
+                      <span className="oficio">{trabajo.servicio_nombre}</span>
+                    )}
+                    <p>{trabajo.descripcion}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

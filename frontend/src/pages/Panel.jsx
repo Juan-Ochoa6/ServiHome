@@ -186,8 +186,7 @@ function Panel() {
                 {ofertas.datos.map((oferta) => {
                   const clave = `oferta-${oferta.id}`;
                   const ocupado = procesando === clave;
-                  const profesionalAprobado = oferta.estado_profesional === 'aprobado';
-
+                  const profesionalAprobado = oferta.estado_identidad === 'aprobado';
                   return (
                     <article className="tarjeta-panel" key={oferta.id}>
                       <div className="tarjeta-panel-cabecera">
@@ -200,9 +199,9 @@ function Panel() {
                         <dd>
                           {oferta.profesional}{' '}
                           <span
-                            className={`estado-solicitud estado-verificacion-${oferta.estado_profesional}`}
+                            className={`estado-solicitud estado-verificacion-${oferta.estado_identidad}`}
                           >
-                            {etiquetaVerificacion(oferta.estado_profesional)}
+                            {etiquetaVerificacion(oferta.estado_identidad)}
                           </span>
                         </dd>
                         <dt>Precio ofrecido</dt>
@@ -211,7 +210,7 @@ function Panel() {
 
                       {!profesionalAprobado && (
                         <p className="solicitud-meta">
-                          Para aprobar esta oferta, primero debe estar aprobado el profesional.
+                          Para aprobar esta oferta, primero debe tener la identidad aprobada.
                         </p>
                       )}
 
