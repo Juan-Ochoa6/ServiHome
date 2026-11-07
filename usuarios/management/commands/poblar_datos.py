@@ -144,6 +144,7 @@ class Command(BaseCommand):
             perfil = Perfil.objects.get(usuario=usuario)
             perfil.rol = 'profesional'
             perfil.estado_verificacion = 'aprobado'
+            perfil.estado_identidad = 'aprobado'
             perfil.disponible = True
             perfil.descripcion_profesional = datos['descripcion']
             perfil.experiencia_anos = datos['experiencia']
