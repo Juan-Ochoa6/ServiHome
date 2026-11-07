@@ -12,6 +12,7 @@ import Solicitudes from './pages/Solicitudes.jsx';
 import NuevaSolicitud from './pages/NuevaSolicitud.jsx';
 import MisServicios from './pages/MisServicios.jsx';
 import MiPortafolio from './pages/MiPortafolio.jsx';
+import MiCuenta from './pages/MiCuenta.jsx';
 import Panel from './pages/Panel.jsx';
 import Login from './pages/Login.jsx';
 import Registro from './pages/Registro.jsx';
@@ -65,6 +66,14 @@ function App() {
             element={
               <RutaProtegida roles={['profesional']}>
                 <MiPortafolio />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="/mi-cuenta"
+            element={
+              <RutaProtegida roles={['cliente', 'profesional']}>
+                <MiCuenta />
               </RutaProtegida>
             }
           />

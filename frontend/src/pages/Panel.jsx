@@ -1,36 +1,105 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  cambiarEstadoDocumento,
   cambiarEstadoOferta,
   cambiarEstadoProfesional,
+  listarDocumentosAdmin,
   listarOfertasPendientes,
   listarProfesionalesPendientes,
 } from '../services/admin.js';
 import { useCargar } from '../hooks/useCargar.js';
-import { formatearPrecio } from '../utils/formato.js';
+import { formatearFecha, formatearPrecio } from '../utils/formato.js';
+import {
+  ETIQUETAS_DOCUMENTO,
+  TIPOS_DOCUMENTO,
+  etiquetaVerificacion,
+} from '../utils/verificacion.js';
 import EstadoCarga from '../components/EstadoCarga.jsx';
 import Mensaje from '../components/Mensaje.jsx';
 
-const ETIQUETAS_VERIFICACION = {
-  pendiente: 'Pendiente de revisión',
-  en_revision: 'En revisión',
-  aprobado: 'Aprobado',
-  rechazado: 'Rechazado',
-};
+function TarjetaDocumento({ documento, ocupado, onResolver }) {
+  const [observacion, setObservacion] = useState(documento.observacion ?? '');
+  const tipo = TIPOS_DOCUMENTO[documento.tipo] ?? documento.tipo;
 
-function etiquetaVerificacion(estado) {
-  return ETIQUETAS_VERIFICACION[estado] ?? estado;
+  return (
+    <article className="tarjeta-panel">
+      <div className="tarjeta-panel-cabecera">
+        <strong>{tipo}</strong>
+        <span className={`estado-solicitud estado-verificacion-${documento.estado}`}>
+          {ETIQUETAS_DOCUMENTO[documento.estado] ?? documento.estado}
+        </span>
+      </div>
+
+      <dl className="datos-panel">
+        <dt>Profesional</dt>
+        <dd>{documento.username}</dd>
+        <dt>Correo</dt>
+        <dd>{documento.email || '—'}</dd>
+        <dt>Subido</dt>
+        <dd>{formatearFecha(documento.fecha_subida)}</dd>
+      </dl>
+
+      <div className="solicitud-acciones">
+        <a
+          className="boton-secundario"
+          href={documento.archivo}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Abrir documento
+        </a>
+      </div>
+
+      <div className="campo-formulario">
+        <label htmlFor={`observacion-${documento.id}`}>Observación (opcional)</label>
+        <input
+          id={`observacion-${documento.id}`}
+          type="text"
+          placeholder="Ej. La foto está borrosa, súbela de nuevo."
+          value={observacion}
+          onChange={(evento) => setObservacion(evento.target.value)}
+        />
+      </div>
+
+      <div className="solicitud-acciones">
+        <button
+          type="button"
+          className="boton-contactar"
+          disabled={ocupado}
+          onClick={() => onResolver('aprobado', observacion.trim())}
+        >
+          {ocupado ? 'Procesando…' : 'Aprobar'}
+        </button>
+        <button
+          type="button"
+          className="boton-secundario boton-peligro"
+          disabled={ocupado}
+          onClick={() => onResolver('rechazado', observacion.trim())}
+        >
+          Rechazar
+        </button>
+      </div>
+    </article>
+  );
 }
 
 function Panel() {
-  const [pestana, setPestana] = useState('profesionales');
+  const [pestana, setPestana] = useState('documentos');
+  const [filtroDocumentos, setFiltroDocumentos] = useState('pendiente');
+
   const profesionales = useCargar(listarProfesionalesPendientes);
   const ofertas = useCargar(listarOfertasPendientes);
+  const cargarDocumentos = useCallback(
+    () => listarDocumentosAdmin(filtroDocumentos),
+    [filtroDocumentos],
+  );
+  const documentos = useCargar(cargarDocumentos);
 
   const [procesando, setProcesando] = useState(null);
   const [errorAccion, setErrorAccion] = useState('');
   const [exito, setExito] = useState('');
 
-  async function ejecutar(clave, accion, confirmacion) {
+  async function ejecutar(clave, accion, confirmacion, mensajeExito) {
     if (!window.confirm(confirmacion)) return;
 
     setErrorAccion('');
@@ -39,10 +108,11 @@ function Panel() {
 
     try {
       const respuesta = await accion();
-      setExito(respuesta?.mensaje ?? 'Cambio realizado.');
-      // Aprobar o rechazar a un profesional también afecta a sus ofertas.
+      setExito(respuesta?.mensaje ?? mensajeExito ?? 'Cambio realizado.');
+      // Un cambio en una pestaña puede afectar a las otras.
       profesionales.recargar();
       ofertas.recargar();
+      documentos.recargar();
     } catch (err) {
       setErrorAccion(err.message);
     } finally {
@@ -50,8 +120,28 @@ function Panel() {
     }
   }
 
-  const totalProfesionales = profesionales.datos?.length;
-  const totalOfertas = ofertas.datos?.length;
+  function resolverDocumento(documento, estado, observacion) {
+    const verbo = estado === 'aprobado' ? 'Aprobar' : 'Rechazar';
+    const tipo = TIPOS_DOCUMENTO[documento.tipo] ?? documento.tipo;
+    let confirmacion = `¿${verbo} el documento "${tipo}" de ${documento.username}?`;
+
+    if (documento.tipo === 'identidad') {
+      confirmacion += ` Esto ${estado === 'aprobado' ? 'aprueba' : 'rechaza'} la identidad del profesional.`;
+    }
+
+    ejecutar(
+      `doc-${documento.id}`,
+      () => cambiarEstadoDocumento(documento.id, estado, observacion),
+      confirmacion,
+      'Documento actualizado.',
+    );
+  }
+
+  const pestanas = [
+    { id: 'documentos', texto: 'Documentos', total: documentos.datos?.length },
+    { id: 'profesionales', texto: 'Profesionales', total: profesionales.datos?.length },
+    { id: 'ofertas', texto: 'Ofertas', total: ofertas.datos?.length },
+  ];
 
   return (
     <section className="seccion">
@@ -61,29 +151,73 @@ function Panel() {
         <p>Revisa y aprueba a los profesionales y los servicios que ofrecen.</p>
       </div>
 
+      <p className="ayuda-pagina">
+        Orden recomendado: primero revisa los documentos (la identidad aprobada habilita al
+        profesional para ofrecer servicios), luego aprueba su perfil y, por último, sus ofertas.
+      </p>
+
       <div className="pestanas" role="tablist" aria-label="Secciones del panel">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={pestana === 'profesionales'}
-          className={`pestana ${pestana === 'profesionales' ? 'pestana-activa' : ''}`}
-          onClick={() => setPestana('profesionales')}
-        >
-          Profesionales{totalProfesionales !== undefined ? ` (${totalProfesionales})` : ''}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={pestana === 'ofertas'}
-          className={`pestana ${pestana === 'ofertas' ? 'pestana-activa' : ''}`}
-          onClick={() => setPestana('ofertas')}
-        >
-          Ofertas{totalOfertas !== undefined ? ` (${totalOfertas})` : ''}
-        </button>
+        {pestanas.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={pestana === item.id}
+            className={`pestana ${pestana === item.id ? 'pestana-activa' : ''}`}
+            onClick={() => setPestana(item.id)}
+          >
+            {item.texto}
+            {item.total !== undefined ? ` (${item.total})` : ''}
+          </button>
+        ))}
       </div>
 
       <Mensaje tipo="exito">{exito}</Mensaje>
       <Mensaje tipo="error">{errorAccion}</Mensaje>
+
+      {pestana === 'documentos' && (
+        <>
+          <div className="filtro-panel">
+            <label htmlFor="filtro-documentos">Mostrar</label>
+            <select
+              id="filtro-documentos"
+              value={filtroDocumentos}
+              onChange={(evento) => setFiltroDocumentos(evento.target.value)}
+            >
+              <option value="pendiente">Pendientes</option>
+              <option value="aprobado">Aprobados</option>
+              <option value="rechazado">Rechazados</option>
+              <option value="">Todos</option>
+            </select>
+          </div>
+
+          <EstadoCarga
+            cargando={documentos.cargando && !documentos.datos}
+            error={documentos.error}
+            onReintentar={documentos.recargar}
+            texto="Cargando documentos…"
+          />
+
+          {documentos.datos && !documentos.error && (
+            documentos.datos.length === 0 ? (
+              <p className="sin-resultados">No hay documentos con ese estado.</p>
+            ) : (
+              <div className="panel-lista">
+                {documentos.datos.map((documento) => (
+                  <TarjetaDocumento
+                    key={documento.id}
+                    documento={documento}
+                    ocupado={procesando === `doc-${documento.id}`}
+                    onResolver={(estado, observacion) =>
+                      resolverDocumento(documento, estado, observacion)
+                    }
+                  />
+                ))}
+              </div>
+            )
+          )}
+        </>
+      )}
 
       {pestana === 'profesionales' && (
         <>
@@ -139,11 +273,11 @@ function Panel() {
                             ejecutar(
                               clave,
                               () => cambiarEstadoProfesional(profesional.id, 'aprobado'),
-                              `¿Aprobar a ${profesional.username}?`,
+                              `¿Aprobar el perfil de ${profesional.username}?`,
                             )
                           }
                         >
-                          {ocupado ? 'Procesando…' : 'Aprobar'}
+                          {ocupado ? 'Procesando…' : 'Aprobar perfil'}
                         </button>
                         <button
                           type="button"
@@ -186,7 +320,8 @@ function Panel() {
                 {ofertas.datos.map((oferta) => {
                   const clave = `oferta-${oferta.id}`;
                   const ocupado = procesando === clave;
-                  const profesionalAprobado = oferta.estado_identidad === 'aprobado';
+                  const identidadAprobada = oferta.estado_identidad === 'aprobado';
+
                   return (
                     <article className="tarjeta-panel" key={oferta.id}>
                       <div className="tarjeta-panel-cabecera">
@@ -201,16 +336,17 @@ function Panel() {
                           <span
                             className={`estado-solicitud estado-verificacion-${oferta.estado_identidad}`}
                           >
-                            {etiquetaVerificacion(oferta.estado_identidad)}
+                            Identidad: {etiquetaVerificacion(oferta.estado_identidad)}
                           </span>
                         </dd>
                         <dt>Precio ofrecido</dt>
                         <dd>{formatearPrecio(oferta.precio)}</dd>
                       </dl>
 
-                      {!profesionalAprobado && (
+                      {!identidadAprobada && (
                         <p className="solicitud-meta">
-                          Para aprobar esta oferta, primero debe tener la identidad aprobada.
+                          Para aprobar esta oferta, primero debe estar aprobada la identidad del
+                          profesional.
                         </p>
                       )}
 
@@ -218,7 +354,7 @@ function Panel() {
                         <button
                           type="button"
                           className="boton-contactar"
-                          disabled={ocupado || !profesionalAprobado}
+                          disabled={ocupado || !identidadAprobada}
                           onClick={() =>
                             ejecutar(
                               clave,

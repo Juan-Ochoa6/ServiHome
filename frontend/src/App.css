@@ -420,3 +420,47 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 .trabajo-cuerpo h3 { margin: 0; color: #24392b; font-size: 1rem; }
 .trabajo-cuerpo p { margin: 0; color: #65736b; font-size: .88rem; line-height: 1.6; }
 .tarjeta-trabajo .formulario-panel { margin: 0; border: 0; border-radius: 0; }
+/* ===== Mi cuenta, verificación y documentos ===== */
+.pagina-cuenta { display: flex; flex-direction: column; gap: 24px; max-width: 760px; }
+.pagina-cuenta .formulario-panel { margin-bottom: 0; }
+
+.bloque-cuenta {
+  display: flex; flex-direction: column; gap: 14px; padding: 22px;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+}
+.bloque-cuenta h3 { margin: 0; color: #24392b; font-size: 1.05rem; }
+.bloque-cuenta p { margin: 0; color: #65736b; font-size: .92rem; line-height: 1.6; }
+
+.estado-linea {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px solid #eef3ef;
+}
+.estado-linea > span:first-child { color: #24392b; font-weight: 600; }
+
+.pasos-verificacion { margin: 0; padding-left: 20px; color: #65736b; font-size: .9rem; line-height: 1.8; }
+
+.documentos-lista { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.documento-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px; border: 1px solid #e3ebe5; border-radius: 12px; background: #f8fbf8;
+}
+.documento-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.documento-info strong { color: #24392b; }
+.documento-info a { color: #23865b; font-size: .88rem; font-weight: 700; }
+.documento-obs { color: #8c1d18; font-size: .85rem; }
+
+.estado-verificacion-no_aplica { background: #eceff1; color: #56645d; }
+
+.campo-formulario input[type="file"] { padding: 8px; }
+
+.filtro-panel { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.filtro-panel label { color: #24392b; font-size: .9rem; font-weight: 700; }
+.filtro-panel select {
+  padding: 10px 14px; border: 1px solid #d7e3da; border-radius: 12px;
+  background: #fff; color: #20332c;
+}
+
+/* Con 5 enlaces en el menú, el saludo se oculta en pantallas medianas */
+@media (max-width: 1150px) {
+  .navbar-sesion > span:first-child { display: none; }
+}

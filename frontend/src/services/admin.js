@@ -12,6 +12,19 @@ export function cambiarEstadoProfesional(id, estado) {
   });
 }
 
+// Documentos de verificación (estado: pendiente | aprobado | rechazado | vacío = todos)
+export function listarDocumentosAdmin(estado) {
+  const consulta = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+  return peticionAutenticada(`/usuarios/admin/documentos/${consulta}`);
+}
+
+export function cambiarEstadoDocumento(id, estado, observacion) {
+  return peticionAutenticada(`/usuarios/admin/documentos/${id}/`, {
+    metodo: 'PATCH',
+    cuerpo: { estado, observacion },
+  });
+}
+
 // Ofertas por aprobar
 export function listarOfertasPendientes() {
   return peticionAutenticada('/admin/ofertas/');
