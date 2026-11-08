@@ -4,6 +4,7 @@ from .views import (
     CategoriaListAPIView,
     ServicioListAPIView,
     SolicitudListCreateAPIView,
+    SolicitudDetailAPIView,
     SolicitudEstadoAPIView,
     OfertaPendienteListAPIView,
     OfertaEstadoAPIView,
@@ -14,7 +15,18 @@ from .views import (
     ServicioProfesionalDetailAPIView,
     MiPortafolioListCreateAPIView,
     MiPortafolioDetailAPIView,
-    PortafolioProfesionalListAPIView,   
+    PortafolioProfesionalListAPIView,
+    ResenaCreateAPIView,
+    ResenasProfesionalListAPIView,
+    ReputacionProfesionalAPIView,
+    PagoCreateAPIView,
+    MisPagosListAPIView,
+    PagoEstadoAPIView,
+    FinanzasResumenAPIView,
+    IncidenteCreateAPIView,
+    IncidentesAdminListAPIView,
+    IncidenteAdminDetailAPIView,
+    FacturaPDFAPIView,
 )
 
 urlpatterns = [
@@ -92,4 +104,81 @@ urlpatterns = [
     PortafolioProfesionalListAPIView.as_view(),
     name='portafolio-profesional'
 ),
+    # RESEÑAS Y CALIFICACIONES
+
+    path(
+        'solicitudes/<int:pk>/resena/',
+        ResenaCreateAPIView.as_view(),
+        name='crear-resena'
+    ),
+
+    path(
+        'profesionales/<int:profesional_id>/resenas/',
+        ResenasProfesionalListAPIView.as_view(),
+        name='resenas-profesional'
+    ),
+
+    path(
+        'profesionales/<int:profesional_id>/reputacion/',
+        ReputacionProfesionalAPIView.as_view(),
+        name='reputacion-profesional'
+    ),
+        # PAGOS
+
+    path(
+        'solicitudes/<int:pk>/pago/',
+        PagoCreateAPIView.as_view(),
+        name='crear-pago'
+    ),
+
+    path(
+        'mis-pagos/',
+        MisPagosListAPIView.as_view(),
+        name='mis-pagos'
+    ),
+
+    path(
+        'pagos/<int:pk>/estado/',
+        PagoEstadoAPIView.as_view(),
+        name='actualizar-estado-pago'
+    ),
+    path(
+    'admin/finanzas/',
+    FinanzasResumenAPIView.as_view(),
+    name='admin-finanzas'
+),
+    # INCIDENTES
+
+    path(
+        'incidentes/',
+        IncidenteCreateAPIView.as_view(),
+        name='crear-incidente'
+    ),
+
+    path(
+        'admin/incidentes/',
+        IncidentesAdminListAPIView.as_view(),
+        name='admin-listar-incidentes'
+    ),
+
+    path(
+        'admin/incidentes/<int:pk>/',
+        IncidenteAdminDetailAPIView.as_view(),
+        name='admin-gestionar-incidente'
+    ),
+    path(
+        'pagos/<int:pk>/factura/',
+        FacturaPDFAPIView.as_view(),
+        name='descargar-factura'
+    ),
+    path(
+        'solicitudes/',
+        SolicitudListCreateAPIView.as_view(),
+        name='lista-crear-solicitudes',
+    ),
+    path(
+    'solicitudes/<int:pk>/',
+    SolicitudDetailAPIView.as_view(),
+    name='detalle-solicitud',
+    ),
 ]

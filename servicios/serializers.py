@@ -6,9 +6,13 @@ from .models import (
     SolicitudServicio,
     ServicioProfesional,
     PropuestaPrecio,
-    TrabajoPortafolio
+    TrabajoPortafolio,
+    Resena,
+    Pago,
+    Incidente,
 )
 from usuarios.models import Perfil
+from django.utils import timezone
 
 
 class CategoriaSerializer(serializers.ModelSerializer):
@@ -64,6 +68,26 @@ class SolicitudServicioSerializer(serializers.ModelSerializer):
         source='get_estado_display',
         read_only=True
     )
+    codigo_inicio = serializers.SerializerMethodField()
+    codigo_finalizacion = serializers.SerializerMethodField()
+
+    def get_codigo_inicio(self, solicitud):
+        request = self.context.get('request')
+
+        if request and request.user.is_authenticated:
+            if solicitud.cliente.usuario_id == request.user.id:
+                return solicitud.codigo_inicio or None
+
+        return None
+
+    def get_codigo_finalizacion(self, solicitud):
+        request = self.context.get('request')
+
+        if request and request.user.is_authenticated:
+            if solicitud.cliente.usuario_id == request.user.id:
+                return solicitud.codigo_finalizacion or None
+
+        return None
 
     class Meta:
         model = SolicitudServicio
@@ -82,6 +106,8 @@ class SolicitudServicioSerializer(serializers.ModelSerializer):
             'estado_display',
             'precio_acordado',
             'fecha_creacion',
+            'codigo_inicio',
+            'codigo_finalizacion',
         ]
 
         read_only_fields = [
@@ -95,7 +121,13 @@ class SolicitudServicioSerializer(serializers.ModelSerializer):
             'precio_acordado',
             'fecha_creacion',
         ]
+    def validate_fecha_solicitada(self, fecha_solicitada):
+        if fecha_solicitada < timezone.now():
+            raise serializers.ValidationError(
+                'La fecha solicitada no puede ser anterior a la fecha actual.'
+            )
 
+        return fecha_solicitada
     def validate_profesional(self, profesional):
         if profesional.rol != 'profesional':
             raise serializers.ValidationError(
@@ -134,6 +166,12 @@ class SolicitudServicioSerializer(serializers.ModelSerializer):
                     'profesional': (
                         'Este profesional todavía no está aprobado por ServiHome.'
                     )
+                })
+            if profesional.estado_identidad != 'aprobado':
+                raise serializers.ValidationError({
+                'profesional': (
+                'Este profesional todavía no tiene su identidad verificada.'
+                )
                 })
 
             if not profesional.disponible:
@@ -328,4 +366,143 @@ class TrabajoPortafolioSerializer(serializers.ModelSerializer):
             'id',
             'profesional',
             'fecha_publicacion',
+        ]
+class ResenaSerializer(serializers.ModelSerializer):
+
+    cliente_nombre = serializers.CharField(
+        source='solicitud.cliente.usuario.username',
+        read_only=True
+    )
+
+    profesional_nombre = serializers.CharField(
+        source='solicitud.profesional.usuario.username',
+        read_only=True
+    )
+
+    solicitud = serializers.IntegerField(
+    source='solicitud.id',
+    read_only=True
+)
+
+    class Meta:
+        model = Resena
+        fields = [
+            'id',
+            'solicitud',
+            'cliente_nombre',
+            'profesional_nombre',
+            'calificacion',
+            'comentario',
+            'fecha_creacion',
+        ]
+
+        read_only_fields = [
+            'id',
+            'solicitud',
+            'cliente_nombre',
+            'profesional_nombre',
+            'fecha_creacion',
+        ]
+
+    def validate_calificacion(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError(
+                'La calificación debe estar entre 1 y 5 estrellas.'
+            )
+
+        return value
+class PagoSerializer(serializers.ModelSerializer):
+
+    solicitud = serializers.IntegerField(
+        source='solicitud.id',
+        read_only=True
+    )
+
+    cliente_nombre = serializers.CharField(
+        source='solicitud.cliente.usuario.username',
+        read_only=True
+    )
+
+    profesional_nombre = serializers.CharField(
+        source='solicitud.profesional.usuario.username',
+        read_only=True
+    )
+
+    class Meta:
+        model = Pago
+        fields = [
+            'id',
+            'solicitud',
+            'cliente_nombre',
+            'profesional_nombre',
+            'monto_total',
+            'porcentaje_comision',
+            'monto_comision',
+            'monto_profesional',
+            'metodo',
+            'estado',
+            'referencia',
+            'fecha_pago',
+            'fecha_creacion',
+        ]
+
+        read_only_fields = [
+            'id',
+            'solicitud',
+            'cliente_nombre',
+            'profesional_nombre',
+            'monto_total',
+            'porcentaje_comision',
+            'monto_comision',
+            'monto_profesional',
+            'estado',
+            'referencia',
+            'fecha_pago',
+            'fecha_creacion',
+        ]
+class IncidenteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Incidente
+        fields = [
+            'id',
+            'solicitud',
+            'reportado_por',
+            'tipo',
+            'descripcion',
+            'estado',
+            'respuesta_administrador',
+            'fecha_creacion',
+            'fecha_actualizacion',
+        ]
+        read_only_fields = [
+            'id',
+            'reportado_por',
+            'estado',
+            'respuesta_administrador',
+            'fecha_creacion',
+            'fecha_actualizacion',
+        ]
+class IncidenteAdminSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Incidente
+        fields = [
+            'id',
+            'solicitud',
+            'reportado_por',
+            'tipo',
+            'descripcion',
+            'estado',
+            'respuesta_administrador',
+            'fecha_creacion',
+            'fecha_actualizacion',
+        ]
+
+        read_only_fields = [
+            'id',
+            'solicitud',
+            'reportado_por',
+            'tipo',
+            'descripcion',
+            'fecha_creacion',
+            'fecha_actualizacion',
         ]

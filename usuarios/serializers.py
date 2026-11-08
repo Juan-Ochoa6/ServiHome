@@ -4,9 +4,14 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 
 from .models import Perfil, DocumentoVerificacion
-
+from servicios.models import ServicioProfesional
 
 class RegistroUsuarioSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(
+    required=True,
+    allow_blank=False,
+    trim_whitespace=True
+    )
     password = serializers.CharField(
         write_only=True,
         validators=[validate_password]
@@ -25,6 +30,7 @@ class RegistroUsuarioSerializer(serializers.ModelSerializer):
         required=False,
         allow_blank=True
     )
+
 
     class Meta:
         model = User
@@ -76,7 +82,7 @@ class RegistroUsuarioSerializer(serializers.ModelSerializer):
             usuario=usuario
         )
 
-        
+
         perfil.rol = rol
         perfil.telefono = telefono
         perfil.direccion = direccion
@@ -98,15 +104,41 @@ class RegistroUsuarioSerializer(serializers.ModelSerializer):
         return usuario
 class DocumentoVerificacionSerializer(serializers.ModelSerializer):
 
+    def validate_archivo(self, archivo):
+        extensiones_permitidas = ['.pdf', '.jpg', '.jpeg', '.png']
+        extensiones = archivo.name.lower()
+
+        if not any(
+            extensiones.endswith(ext)
+            for ext in extensiones_permitidas
+        ):
+            raise serializers.ValidationError(
+                'Solo se permiten archivos PDF, JPG y PNG.'
+            )
+
+        limite = 5 * 1024 * 1024
+
+        if archivo.size > limite:
+            raise serializers.ValidationError(
+                'El archivo no puede superar los 5 MB.'
+            )
+
+        return archivo
+    archivo = serializers.FileField(write_only=True)
+    url_descarga = serializers.SerializerMethodField()
+
+    def get_url_descarga(self, obj):
+        return f'/api/usuarios/documentos/{obj.pk}/descargar/'
     class Meta:
         model = DocumentoVerificacion
         fields = [
-            'id',
-            'tipo',
-            'archivo',
-            'estado',
-            'observacion',
-            'fecha_subida',
+                    'id',
+                    'tipo',
+                    'archivo',
+                    'url_descarga',
+                    'estado',
+                    'observacion',
+                    'fecha_subida',
         ]
 
         read_only_fields = [
@@ -130,6 +162,10 @@ class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    url_descarga = serializers.SerializerMethodField()
+
+    def get_url_descarga(self, obj):
+        return f'/api/usuarios/documentos/{obj.pk}/descargar/'
     class Meta:
         model = DocumentoVerificacion
         fields = [
@@ -138,7 +174,7 @@ class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
             'username',
             'email',
             'tipo',
-            'archivo',
+            'url_descarga',
             'estado',
             'observacion',
             'fecha_subida',
@@ -208,3 +244,33 @@ class MiPerfilSerializer(serializers.ModelSerializer):
             instance.usuario.save()
 
         return super().update(instance, validated_data)
+class ProfesionalDisponibleSerializer(serializers.ModelSerializer):
+    profesional_id = serializers.IntegerField(
+        source='profesional.id',
+        read_only=True
+    )
+
+    username = serializers.CharField(
+        source='profesional.usuario.username',
+        read_only=True
+    )
+
+    descripcion_profesional = serializers.CharField(
+        source='profesional.descripcion_profesional',
+        read_only=True
+    )
+
+    experiencia_anos = serializers.IntegerField(
+        source='profesional.experiencia_anos',
+        read_only=True
+    )
+
+    class Meta:
+        model = ServicioProfesional
+        fields = [
+            'profesional_id',
+            'username',
+            'descripcion_profesional',
+            'experiencia_anos',
+            'precio',
+        ]

@@ -4,7 +4,9 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from unittest.mock import patch
+from django.core.files.uploadedfile import SimpleUploadedFile
 
+from usuarios.models import DocumentoVerificacion
 import pyotp
 
 from django.contrib.auth.models import User
@@ -16,7 +18,8 @@ from rest_framework.test import APIClient
 
 from usuarios.models import (
     DesafioLogin,
-    CodigoRecuperacionMFA
+    CodigoRecuperacionMFA,
+    DocumentoVerificacion
 )
 
 from usuarios.views import (
@@ -997,8 +1000,8 @@ class AdministracionProfesionalesTests(TestCase):
             'aprobado'
         )
 
-        # La aprobación no activa automáticamente la disponibilidad.
-        self.assertFalse(self.perfil_profesional.disponible)
+        # La aprobación  activa automáticamente la disponibilidad.
+        self.assertTrue(self.perfil_profesional.disponible)
 
     def test_administrador_puede_rechazar_profesional(self):
         self.client.force_authenticate(user=self.usuario_admin)
@@ -1046,3 +1049,204 @@ class AdministracionProfesionalesTests(TestCase):
         )
 
         self.assertEqual(respuesta.status_code, 400)
+    def test_profesional_pendiente_puede_consultar_su_verificacion(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.get(
+            '/api/usuarios/mi-verificacion/'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta.data['estado_verificacion'],
+            'pendiente'
+        )
+        self.assertEqual(
+            list(respuesta.data.keys()),
+            ['estado_verificacion']
+        )
+
+    def test_profesional_pendiente_no_puede_consultar_su_perfil(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.get(
+            '/api/usuarios/perfil/'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_profesional_pendiente_no_puede_modificar_su_perfil(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            '/api/usuarios/perfil/',
+            {'telefono': '3001234567'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+class RegistroUsuarioTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url_registro = '/api/usuarios/registro/'
+
+        self.datos_registro = {
+            'username': 'nuevo_usuario',
+            'email': 'nuevo@servihome.test',
+            'password': 'RegistroSeguro2026!',
+            'first_name': 'Usuario',
+            'last_name': 'Prueba',
+            'rol': 'cliente',
+        }
+
+    def test_registro_exitoso_con_correo(self):
+        respuesta = self.client.post(
+            self.url_registro,
+            self.datos_registro,
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+        self.assertTrue(
+            User.objects.filter(
+                username='nuevo_usuario',
+                email='nuevo@servihome.test'
+            ).exists()
+        )
+
+    def test_registro_sin_correo_es_rechazado(self):
+        datos = self.datos_registro.copy()
+        datos.pop('email')
+
+        respuesta = self.client.post(
+            self.url_registro,
+            datos,
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(
+            User.objects.filter(username='nuevo_usuario').exists()
+        )
+
+    def test_registro_con_correo_vacio_es_rechazado(self):
+        datos = self.datos_registro.copy()
+        datos['email'] = ''
+
+        respuesta = self.client.post(
+            self.url_registro,
+            datos,
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_registro_con_correo_invalido_es_rechazado(self):
+        datos = self.datos_registro.copy()
+        datos['email'] = 'correo_invalido'
+
+        respuesta = self.client.post(
+            self.url_registro,
+            datos,
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_registro_con_correo_duplicado_es_rechazado(self):
+        User.objects.create_user(
+            username='usuario_existente',
+            email='nuevo@servihome.test',
+            password='ClaveExistente2026!'
+        )
+
+        respuesta = self.client.post(
+            self.url_registro,
+            self.datos_registro,
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertFalse(
+            User.objects.filter(username='nuevo_usuario').exists()
+        )
+class DocumentoVerificacionDescargaTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+
+        # Propietario del documento
+        self.usuario_propietario = User.objects.create_user(
+            username='propietario_doc',
+            email='propietario@servihome.test',
+            password='ClavePropietario123!'
+        )
+
+        # Otro usuario
+        self.otro_usuario = User.objects.create_user(
+            username='otro_usuario_doc',
+            email='otro@servihome.test',
+            password='ClaveOtro123!'
+        )
+
+        # Administrador
+        self.usuario_admin = User.objects.create_user(
+            username='admin_doc',
+            email='admin_doc@servihome.test',
+            password='ClaveAdmin123!',
+            is_staff=True
+        )
+
+        self.documento = DocumentoVerificacion.objects.create(
+            perfil=self.usuario_propietario.perfil,
+            tipo='identidad',
+            archivo=SimpleUploadedFile(
+                'documento.pdf',
+                b'%PDF-1.4 contenido de prueba',
+                content_type='application/pdf'
+            )
+        )
+
+        self.url = (
+            f'/api/usuarios/documentos/'
+            f'{self.documento.pk}/descargar/'
+        )
+
+    def test_propietario_puede_descargar_documento(self):
+        self.client.force_authenticate(
+            user=self.usuario_propietario
+        )
+
+        respuesta = self.client.get(self.url)
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta['Content-Disposition'].split(';')[0],
+            'attachment'
+        )
+
+    def test_otro_usuario_no_puede_descargar_documento(self):
+        self.client.force_authenticate(user=self.otro_usuario)
+
+        respuesta = self.client.get(self.url)
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_administrador_puede_descargar_documento(self):
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.get(self.url)
+
+        self.assertEqual(respuesta.status_code, 200)
+
+    def test_usuario_sin_sesion_no_puede_descargar_documento(self):
+        respuesta = self.client.get(self.url)
+
+        self.assertEqual(respuesta.status_code, 401)

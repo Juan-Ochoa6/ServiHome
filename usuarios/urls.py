@@ -28,7 +28,13 @@ urlpatterns = [
     'mis-documentos/',
     views.MisDocumentosVerificacionAPIView.as_view(),
     name='mis-documentos-verificacion'
-    ),path(
+    ),
+    path(
+    'documentos/<int:pk>/descargar/',
+    views.DocumentoVerificacionDescargaAPIView.as_view(),
+    name='documento-verificacion-descarga'
+    ),
+    path(
     'admin/documentos/',
     views.AdminDocumentosVerificacionAPIView.as_view(),
     name='admin-documentos-verificacion'
@@ -47,5 +53,10 @@ urlpatterns = [
     'perfil/',
     views.MiPerfilAPIView.as_view(),
     name='mi-perfil'
+    ),
+    path(
+    'profesionales/',
+    views.listar_profesionales_disponibles,
+    name='listar-profesionales-disponibles'
     ),
 ]
