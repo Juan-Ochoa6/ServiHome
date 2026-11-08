@@ -1,9 +1,17 @@
 
 from django.db import models
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.contrib.auth.models import User
-
+from django.utils.deconstruct import deconstructible
 from .security import encrypt_totp_secret, decrypt_totp_secret
-
+@deconstructible
+class AlmacenamientoDocumentosPrivados(FileSystemStorage):
+    def __init__(self):
+        super().__init__(
+            location=settings.BASE_DIR / 'private_media' / 'verificacion_profesionales',
+            base_url=None
+        )
 
 class Perfil(models.Model):
 
@@ -94,7 +102,8 @@ class DocumentoVerificacion(models.Model):
     )
 
     archivo = models.FileField(
-        upload_to='verificacion_profesionales/'
+        storage=AlmacenamientoDocumentosPrivados(),
+        upload_to=''
     )
 
     estado = models.CharField(

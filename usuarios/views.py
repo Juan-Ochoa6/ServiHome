@@ -12,7 +12,7 @@ from .serializers import (
     AdminDocumentoVerificacionSerializer,
 )
 import pyotp
-
+from servicios.models import ServicioProfesional
 import qrcode
 from rest_framework.exceptions import PermissionDenied
 from django.contrib.auth import authenticate, get_user_model
@@ -31,10 +31,12 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import (
     extend_schema,
     OpenApiResponse,
+    OpenApiParameter,
     inline_serializer,
 )
 
@@ -42,6 +44,7 @@ from usuarios.models import DesafioLogin, CodigoRecuperacionMFA
 from .serializers import (
     RegistroUsuarioSerializer,
     MiPerfilSerializer,
+    ProfesionalDisponibleSerializer,
 )
 from .models import Perfil
 
@@ -52,7 +55,15 @@ User = get_user_model()
 # =========================================================
 # FUNCIONES AUXILIARES
 # =========================================================
-
+def exigir_profesional_aprobado(perfil):
+    if (
+        perfil.rol == 'profesional'
+        and perfil.estado_verificacion != 'aprobado'
+    ):
+        raise PermissionDenied(
+            'Debes estar aprobado por ServiHome para utilizar '
+            'las funcionalidades profesionales.'
+        )
 def registrar_desafio(usuario, challenge):
     """Guarda el hash del desafío para validar su registro y uso."""
 
@@ -838,10 +849,7 @@ def cambiar_estado_profesional(request, pk):
         )
 
     perfil.estado_verificacion = nuevo_estado
-
-    if nuevo_estado == 'rechazado':
-        perfil.disponible = False
-
+    perfil.disponible = (nuevo_estado == 'aprobado')
     perfil.save(
         update_fields=['estado_verificacion', 'disponible']
     )
@@ -906,6 +914,79 @@ def cambiar_disponibilidad(request):
         'mensaje': 'Disponibilidad actualizada correctamente.',
         'disponible': perfil.disponible
     })
+@extend_schema(
+    tags=['Profesionales'],
+    summary='Listar profesionales disponibles por servicio',
+    description=(
+        'Permite a los clientes consultar profesionales disponibles '
+        'con ofertas aprobadas para un servicio específico.'
+    ),
+    parameters=[
+        OpenApiParameter(
+            name='servicio_id',
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='ID del servicio que desea contratar el cliente.'
+        )
+    ],
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_profesionales_disponibles(request):
+    """Lista profesionales disponibles para un servicio específico."""
+
+    try:
+        perfil_cliente = request.user.perfil
+    except Perfil.DoesNotExist:
+        return Response(
+            {'error': 'No se encontró el perfil del usuario.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if perfil_cliente.rol != 'cliente':
+        return Response(
+            {'error': 'Solo los clientes pueden consultar profesionales.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    servicio_id = request.query_params.get('servicio_id')
+
+    if not servicio_id:
+        return Response(
+            {'error': 'Debes proporcionar el parámetro servicio_id.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        servicio_id = int(servicio_id)
+
+        if servicio_id <= 0:
+            raise ValueError
+
+    except (ValueError, TypeError):
+        return Response(
+            {'error': 'El servicio_id debe ser un número entero positivo.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    ofertas = ServicioProfesional.objects.filter(
+        servicio_id=servicio_id,
+        estado_aprobacion='aprobado',
+        profesional__rol='profesional',
+        profesional__estado_verificacion='aprobado',
+        profesional__estado_identidad='aprobado',
+        profesional__disponible=True
+    ).select_related(
+        'profesional__usuario'
+    ).order_by('precio')
+
+    serializer = ProfesionalDisponibleSerializer(
+        ofertas,
+        many=True
+    )
+
+    return Response(serializer.data)
 class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
     serializer_class = DocumentoVerificacionSerializer
     permission_classes = [IsAuthenticated]
@@ -918,7 +999,8 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
             raise PermissionDenied(
                 'Tu usuario no tiene un perfil configurado.'
             )
-
+        if perfil.rol == 'profesional':
+            exigir_profesional_aprobado(perfil)
         return DocumentoVerificacion.objects.filter(
             perfil=perfil
         ).order_by('-fecha_subida')
@@ -932,6 +1014,8 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
             )
 
         tipo = serializer.validated_data['tipo']
+        if perfil.rol == 'profesional':
+            exigir_profesional_aprobado(perfil)
 
         if perfil.rol == 'cliente' and tipo != 'identidad':
             raise ValidationError(
@@ -939,6 +1023,44 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
             )
 
         serializer.save(perfil=perfil)
+class DocumentoVerificacionDescargaAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        documento = get_object_or_404(
+            DocumentoVerificacion.objects.select_related(
+                'perfil__usuario'
+            ),
+            pk=pk
+        )
+
+        # Solo el propietario o un administrador puede descargar.
+        if (
+            not request.user.is_staff
+            and documento.perfil.usuario_id != request.user.id
+        ):
+            raise PermissionDenied(
+                'No tienes permiso para descargar este documento.'
+            )
+
+        # Verificar que el archivo exista físicamente.
+        if not documento.archivo or not documento.archivo.storage.exists(
+            documento.archivo.name
+        ):
+            return Response(
+                {'detail': 'El archivo no está disponible.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        nombre_archivo = documento.archivo.name.rsplit('/', 1)[-1]
+
+        return FileResponse(
+            documento.archivo.open('rb'),
+            as_attachment=True,
+            filename=nombre_archivo,
+            content_type='application/octet-stream'
+        )
+
 class AdminDocumentosVerificacionAPIView(generics.ListAPIView):
     serializer_class = AdminDocumentoVerificacionSerializer
     permission_classes = [IsAdminUser]
@@ -974,6 +1096,14 @@ class MiVerificacionAPIView(generics.GenericAPIView):
     def get(self, request):
         perfil = Perfil.objects.get(usuario=request.user)
 
+        if (
+            perfil.rol == 'profesional'
+            and perfil.estado_verificacion != 'aprobado'
+        ):
+            return Response({
+                'estado_verificacion': perfil.estado_verificacion
+            })
+
         documentos = DocumentoVerificacion.objects.filter(
             perfil=perfil
         ).order_by('-fecha_subida')
@@ -992,10 +1122,9 @@ class MiPerfilAPIView(generics.RetrieveUpdateAPIView):
     serializer_class = MiPerfilSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'patch', 'head', 'options']
-
     def get_object(self):
         try:
-            return Perfil.objects.select_related(
+            perfil = Perfil.objects.select_related(
                 'usuario'
             ).get(usuario=self.request.user)
 
@@ -1003,3 +1132,8 @@ class MiPerfilAPIView(generics.RetrieveUpdateAPIView):
             raise PermissionDenied(
                 'Tu usuario no tiene un perfil configurado.'
             )
+
+        if perfil.rol == 'profesional':
+            exigir_profesional_aprobado(perfil)
+
+        return perfil
