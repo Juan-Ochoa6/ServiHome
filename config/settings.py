@@ -193,5 +193,11 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
 }
+STORAGE_ROOT = Path(os.getenv('STORAGE_ROOT', str(BASE_DIR)))
+
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = STORAGE_ROOT / 'media'
+
+PRIVATE_MEDIA_ROOT = (
+    STORAGE_ROOT / 'private_media' / 'verificacion_profesionales'
+)

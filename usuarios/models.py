@@ -9,7 +9,7 @@ from .security import encrypt_totp_secret, decrypt_totp_secret
 class AlmacenamientoDocumentosPrivados(FileSystemStorage):
     def __init__(self):
         super().__init__(
-            location=settings.BASE_DIR / 'private_media' / 'verificacion_profesionales',
+            location=settings.PRIVATE_MEDIA_ROOT,
             base_url=None
         )
 
