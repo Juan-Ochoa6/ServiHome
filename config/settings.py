@@ -32,6 +32,21 @@ ALLOWED_HOSTS = os.getenv(
     'ALLOWED_HOSTS',
     'api.servihome.com.co'
 ).split(',')
+# Configuración CSRF para producción
+CSRF_TRUSTED_ORIGINS = [
+    'https://api.servihome.com.co',
+    'https://servihome.com.co',
+    'https://www.servihome.com.co',
+]
+
+# Reconocer HTTPS detrás del proxy de Railway
+SECURE_PROXY_SSL_HEADER = (
+    'HTTP_X_FORWARDED_PROTO',
+    'https'
+)
+
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://127.0.0.1:5173',
