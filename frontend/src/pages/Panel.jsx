@@ -16,6 +16,7 @@ import {
 } from '../utils/verificacion.js';
 import EstadoCarga from '../components/EstadoCarga.jsx';
 import Mensaje from '../components/Mensaje.jsx';
+import BotonDocumento from '../components/BotonDocumento.jsx';
 
 function TarjetaDocumento({ documento, ocupado, onResolver }) {
   const [observacion, setObservacion] = useState(documento.observacion ?? '');
@@ -40,14 +41,9 @@ function TarjetaDocumento({ documento, ocupado, onResolver }) {
       </dl>
 
       <div className="solicitud-acciones">
-        <a
-          className="boton-secundario"
-          href={documento.archivo}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <BotonDocumento documento={documento} className="boton-secundario">
           Abrir documento
-        </a>
+        </BotonDocumento>
       </div>
 
       <div className="campo-formulario">

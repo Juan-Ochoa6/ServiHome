@@ -2,17 +2,23 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   cambiarEstadoSolicitud,
+  listarMisPagos,
   listarOfertas,
   listarSolicitudes,
 } from '../services/catalogo.js';
 import { useCargar } from '../hooks/useCargar.js';
 import { useAuth } from '../auth/useAuth.js';
 import { formatearFecha, formatearPrecio } from '../utils/formato.js';
+import CodigoServicio from '../components/CodigoServicio.jsx';
 import EstadoCarga from '../components/EstadoCarga.jsx';
 import Mensaje from '../components/Mensaje.jsx';
 import NegociacionPrecio from '../components/NegociacionPrecio.jsx';
+import PagoSolicitud from '../components/PagoSolicitud.jsx';
+import ReporteIncidente from '../components/ReporteIncidente.jsx';
+import ResenaSolicitud from '../components/ResenaSolicitud.jsx';
 
 const ESTADOS_CANCELABLES = ['pendiente', 'aceptada'];
+const ESTADOS_CON_INCIDENTE = ['aceptada', 'en_proceso', 'completada'];
 
 // Precio que el profesional publicó para ese servicio (solo como referencia).
 function precioDeReferencia(ofertas, solicitud) {
@@ -29,14 +35,21 @@ function Solicitudes() {
 
   const { datos, cargando, error, recargar } = useCargar(listarSolicitudes);
   const ofertas = useCargar(listarOfertas);
+  const pagos = useCargar(listarMisPagos);
 
-  const [abierta, setAbierta] = useState(null); // id de la solicitud con la negociación abierta
+  const [abierta, setAbierta] = useState(null); // solicitud con la negociación abierta
   const [procesando, setProcesando] = useState(null);
   const [errorAccion, setErrorAccion] = useState('');
 
   const solicitudes = datos
     ? [...datos].sort((a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion))
     : [];
+
+  // Pagos indexados por el id de su solicitud.
+  const pagoPorSolicitud = {};
+  for (const pago of pagos.datos ?? []) {
+    pagoPorSolicitud[pago.solicitud] = pago;
+  }
 
   async function cambiarEstado(solicitud, estado, confirmacion) {
     if (!window.confirm(confirmacion)) return;
@@ -64,8 +77,8 @@ function Solicitudes() {
           <h2>{esCliente ? 'Solicitudes de servicio' : 'Solicitudes que has recibido'}</h2>
           <p>
             {esCliente
-              ? 'Aquí verás las solicitudes, su estado y la negociación del precio.'
-              : 'Negocia el precio con el cliente y responde cada solicitud.'}
+              ? 'Aquí verás tus solicitudes, el precio, los códigos del servicio, el pago y tus reseñas.'
+              : 'Negocia el precio, inicia y completa cada servicio con el código del cliente.'}
           </p>
         </div>
         {esCliente && (
@@ -105,6 +118,7 @@ function Solicitudes() {
               const puedeCancelar =
                 esCliente && ESTADOS_CANCELABLES.includes(solicitud.estado);
               const puedeRechazar = !esCliente && solicitud.estado === 'pendiente';
+              const puedeReportar = esCliente && ESTADOS_CON_INCIDENTE.includes(solicitud.estado);
               const abiertaAhora = abierta === solicitud.id;
 
               let textoNegociacion = 'Ver historial de precios';
@@ -131,6 +145,26 @@ function Solicitudes() {
                       <p className="solicitud-meta">
                         Precio acordado: <strong>{formatearPrecio(solicitud.precio_acordado)}</strong>
                       </p>
+                    )}
+
+                    {(solicitud.estado === 'aceptada' || solicitud.estado === 'en_proceso') && (
+                      <CodigoServicio
+                        solicitud={solicitud}
+                        esCliente={esCliente}
+                        onCambio={recargar}
+                      />
+                    )}
+
+                    {solicitud.estado === 'completada' && (
+                      <>
+                        <PagoSolicitud
+                          solicitud={solicitud}
+                          pago={pagoPorSolicitud[solicitud.id]}
+                          esCliente={esCliente}
+                          onCambio={pagos.recargar}
+                        />
+                        <ResenaSolicitud solicitud={solicitud} esCliente={esCliente} />
+                      </>
                     )}
 
                     <div className="solicitud-acciones">
@@ -176,6 +210,8 @@ function Solicitudes() {
                         </button>
                       )}
                     </div>
+
+                    {puedeReportar && <ReporteIncidente solicitud={solicitud} />}
 
                     {abiertaAhora && (
                       <NegociacionPrecio

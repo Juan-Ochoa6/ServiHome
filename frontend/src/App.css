@@ -464,3 +464,61 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 @media (max-width: 1150px) {
   .navbar-sesion > span:first-child { display: none; }
 }
+/* ===== Botón para abrir documentos protegidos ===== */
+.boton-enlace {
+  padding: 0; border: 0; background: none; color: #23865b; font: inherit;
+  font-size: .88rem; font-weight: 700; text-align: left; text-decoration: underline; cursor: pointer;
+}
+.boton-enlace:disabled { opacity: .6; cursor: wait; }
+/* ===== Flujo del servicio: códigos, pago, reseñas e incidentes ===== */
+.subbloque {
+  display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 14px;
+  border: 1px solid #e3ebe5; border-radius: 12px; background: #f8fbf8;
+}
+.subbloque h4 { margin: 0; color: #24392b; font-size: .95rem; }
+.subbloque p { margin: 0; }
+.subbloque textarea {
+  width: 100%; padding: 11px 14px; border: 1px solid #d7e3da; border-radius: 12px;
+  background: #fff; color: #20332c; font: inherit; resize: vertical;
+}
+
+.codigo-servicio {
+  align-self: flex-start; padding: 8px 18px; border: 2px dashed #23865b; border-radius: 12px;
+  background: #fff; color: #1f6b43; font-family: ui-monospace, Consolas, monospace;
+  font-size: 1.6rem; font-weight: 700; letter-spacing: .25em;
+}
+.codigo-form { display: flex; flex-wrap: wrap; gap: 10px; }
+.codigo-form input, .codigo-form select {
+  padding: 11px 14px; border: 1px solid #d7e3da; border-radius: 12px;
+  background: #fff; color: #20332c; font: inherit;
+}
+.codigo-form input { width: 150px; text-align: center; font-size: 1.1rem; letter-spacing: .2em; }
+
+.estrellas { color: #e0a100; letter-spacing: 2px; }
+.calificacion-campo { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
+.calificacion-campo legend { margin-bottom: 8px; padding: 0; color: #24392b; font-size: .88rem; font-weight: 700; }
+.calificacion-campo label {
+  position: relative; padding: 6px 12px; border: 1px solid #d7e3da; border-radius: 999px;
+  background: #fff; color: #56645d; font-weight: 700; cursor: pointer;
+}
+.calificacion-campo label.activa { border-color: #e0a100; background: #fff7dc; color: #7a5b00; }
+.calificacion-campo label:focus-within { outline: 2px solid #23865b; outline-offset: 2px; }
+.calificacion-campo input { position: absolute; opacity: 0; pointer-events: none; }
+.formulario-resena { display: flex; flex-direction: column; gap: 10px; }
+
+.lista-resenas { display: grid; gap: 12px; width: 100%; text-align: left; }
+.resena-item {
+  display: flex; flex-direction: column; gap: 6px; padding: 14px;
+  border: 1px solid #e3ebe5; border-radius: 12px; background: #f8fbf8;
+}
+.resena-item p { margin: 0; color: #56645d; font-size: .92rem; line-height: 1.6; }
+.resena-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.incidente { margin-top: 10px; }
+.boton-panico {
+  padding: 11px 18px; border: 1px solid #c0392b; border-radius: 12px; background: #c0392b;
+  color: #fff; font-weight: 700; cursor: pointer;
+}
+.boton-panico:hover { background: #a93226; }
+.aviso-emergencia { padding: 10px 12px; border-radius: 10px; background: #fdecea; color: #8c1d18; font-size: .9rem; }
+.aviso-emergencia a { color: #8c1d18; font-weight: 700; }

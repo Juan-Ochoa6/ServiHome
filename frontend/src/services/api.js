@@ -196,3 +196,104 @@ export function registrarUsuario(datos) {
     cuerpo: datos,
   });
 }
+
+// ---------- Archivos protegidos ----------
+
+// Pide un archivo que exige sesión y lo devuelve como Blob.
+// "ruta" es la que entrega el backend, por ejemplo /api/usuarios/documentos/4/descargar/
+async function pedirArchivo(ruta, token) {
+  const origen = new URL(API_URL, window.location.origin).origin;
+
+  let respuesta;
+  try {
+    respuesta = await fetch(`${origen}${ruta}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new ErrorApi(0, null, mensajeDeError(0, null));
+  }
+
+  if (!respuesta.ok) {
+    let datos = null;
+    try {
+      datos = await respuesta.json();
+    } catch {
+      // La respuesta no trae cuerpo JSON.
+    }
+    throw new ErrorApi(respuesta.status, datos, mensajeDeError(respuesta.status, datos));
+  }
+
+  return respuesta.blob();
+}
+
+export async function descargarArchivoProtegido(ruta) {
+  const sesion = leerSesion();
+  if (!sesion?.access) {
+    throw new ErrorApi(401, null, 'Debes iniciar sesión.');
+  }
+
+  try {
+    return await pedirArchivo(ruta, sesion.access);
+  } catch (error) {
+    if (!(error instanceof ErrorApi) || error.status !== 401) throw error;
+
+    try {
+      const nuevoAcceso = await renovarAcceso();
+      return await pedirArchivo(ruta, nuevoAcceso);
+    } catch (segundoError) {
+      if (segundoError instanceof ErrorApi && segundoError.status === 401) {
+        borrarSesion();
+        window.dispatchEvent(new Event(EVENTO_SESION_EXPIRADA));
+      }
+      throw segundoError;
+    }
+  }
+}
+
+// Reconoce el tipo real del archivo por sus primeros bytes. Solo se muestran
+// en pantalla PDF, PNG y JPG; cualquier otra cosa se descarga.
+async function conTipoReal(blob) {
+  const inicio = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+  let tipo = '';
+
+  if (inicio[0] === 0x25 && inicio[1] === 0x50 && inicio[2] === 0x44 && inicio[3] === 0x46) {
+    tipo = 'application/pdf';
+  } else if (inicio[0] === 0x89 && inicio[1] === 0x50 && inicio[2] === 0x4e && inicio[3] === 0x47) {
+    tipo = 'image/png';
+  } else if (inicio[0] === 0xff && inicio[1] === 0xd8 && inicio[2] === 0xff) {
+    tipo = 'image/jpeg';
+  }
+
+  return {
+    blob: tipo ? new Blob([blob], { type: tipo }) : blob,
+    visualizable: Boolean(tipo),
+  };
+}
+
+// Abre un archivo protegido en una pestaña nueva.
+export async function abrirArchivoProtegido(ruta) {
+  // La pestaña se abre en el mismo clic, antes de esperar la descarga,
+  // para que el navegador no la bloquee como ventana emergente.
+  const ventana = window.open('', '_blank');
+
+  try {
+    const original = await descargarArchivoProtegido(ruta);
+    const { blob, visualizable } = await conTipoReal(original);
+    const url = URL.createObjectURL(blob);
+
+    if (ventana && visualizable) {
+      ventana.location.href = url;
+    } else {
+      if (ventana) ventana.close();
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = 'documento';
+      enlace.click();
+    }
+
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    if (ventana) ventana.close();
+    throw error;
+  }
+}

@@ -21,3 +21,9 @@ export const ETIQUETAS_VERIFICACION = {
 export function etiquetaVerificacion(estado) {
   return ETIQUETAS_VERIFICACION[estado] ?? estado;
 }
+
+// Ruta del backend para descargar un documento protegido.
+// Si la respuesta no trae url_descarga, se arma con el id del documento.
+export function rutaDescarga(documento) {
+  return documento.url_descarga ?? `/api/usuarios/documentos/${documento.id}/descargar/`;
+}

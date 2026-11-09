@@ -1,12 +1,17 @@
 import { useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { listarOfertas } from '../services/catalogo.js';
+import {
+  listarOfertas,
+  listarResenasProfesional,
+  obtenerReputacion,
+} from '../services/catalogo.js';
 import { listarPortafolioPublico } from '../services/profesional.js';
 import { useCargar } from '../hooks/useCargar.js';
 import { useAuth } from '../auth/useAuth.js';
-import { formatearPrecio } from '../utils/formato.js';
+import { formatearFecha, formatearPrecio } from '../utils/formato.js';
 import { agruparPorProfesional, categoriasDe } from '../utils/profesionales.js';
 import EstadoCarga from '../components/EstadoCarga.jsx';
+import Estrellas from '../components/Estrellas.jsx';
 import IconoCategoria from '../components/IconoCategoria.jsx';
 
 function PerfilProfesional() {
@@ -15,7 +20,11 @@ function PerfilProfesional() {
   const { datos, cargando, error, recargar } = useCargar(listarOfertas);
 
   const cargarPortafolio = useCallback(() => listarPortafolioPublico(id), [id]);
+  const cargarReputacion = useCallback(() => obtenerReputacion(id), [id]);
+  const cargarResenas = useCallback(() => listarResenasProfesional(id), [id]);
   const portafolio = useCargar(cargarPortafolio);
+  const reputacion = useCargar(cargarReputacion);
+  const resenas = useCargar(cargarResenas);
 
   // Solo los clientes (o quien aún no inició sesión) pueden solicitar servicios.
   const puedeSolicitar = !sesion || sesion.rol === 'cliente';
@@ -54,6 +63,8 @@ function PerfilProfesional() {
 
   const categorias = categoriasDe(profesional);
   const trabajos = portafolio.datos ?? [];
+  const opiniones = resenas.datos ?? [];
+  const resumen = reputacion.datos;
 
   return (
     <section className="seccion panel-flujo">
@@ -67,6 +78,19 @@ function PerfilProfesional() {
         </div>
         <span className="oficio">{categorias.join(' · ')}</span>
         <h2>{profesional.nombre}</h2>
+
+        {resumen && (
+          resumen.total_resenas > 0 ? (
+            <p className="perfil-calificacion">
+              <Estrellas valor={resumen.promedio_calificacion} />{' '}
+              {Number(resumen.promedio_calificacion).toFixed(1)} · {resumen.total_resenas}{' '}
+              {resumen.total_resenas === 1 ? 'reseña' : 'reseñas'}
+            </p>
+          ) : (
+            <p className="perfil-calificacion">Aún no tiene reseñas</p>
+          )
+        )}
+
         <p>
           {profesional.descripcion ||
             'Este profesional aún no ha agregado una descripción.'}
@@ -112,6 +136,24 @@ function PerfilProfesional() {
                     )}
                     <p>{trabajo.descripcion}</p>
                   </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+
+        {opiniones.length > 0 && (
+          <>
+            <h3 className="titulo-ofertas">Opiniones de clientes</h3>
+            <div className="lista-resenas">
+              {opiniones.map((resena) => (
+                <article className="resena-item" key={resena.id}>
+                  <div className="resena-cabecera">
+                    <strong>{resena.cliente_nombre}</strong>
+                    <Estrellas valor={resena.calificacion} />
+                  </div>
+                  {resena.comentario && <p>{resena.comentario}</p>}
+                  <span className="solicitud-meta">{formatearFecha(resena.fecha_creacion)}</span>
                 </article>
               ))}
             </div>
