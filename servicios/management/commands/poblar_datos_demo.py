@@ -1,16 +1,23 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 from decimal import Decimal
+from io import BytesIO
 
-from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from usuarios.models import Perfil
+from PIL import Image, ImageDraw
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+from usuarios.models import Perfil, DocumentoVerificacion
 from servicios.models import (
     Categoria,
     Servicio,
     ServicioProfesional,
+    TrabajoPortafolio,
     SolicitudServicio,
     PropuestaPrecio,
     Resena,
@@ -20,20 +27,136 @@ from servicios.models import (
 
 
 class DryRunRollback(Exception):
-    pass
+    """Fuerza el rollback de la transacción durante --dry-run."""
 
 
 class Command(BaseCommand):
-    help = "Crea datos ficticios de demostración para ServiHome."
+    help = (
+        "Crea datos ficticios realistas para demostrar los módulos "
+        "de ServiHome."
+    )
+
+    PASSWORD_DEMO = "DemoServiHome2026*"
+
+    NOMBRES = [
+        ("Camila", "Rojas"),
+        ("Andrés", "Martínez"),
+        ("Valentina", "Gómez"),
+        ("Santiago", "Torres"),
+        ("Laura", "Castro"),
+        ("Mateo", "Herrera"),
+        ("Daniela", "Moreno"),
+        ("Sebastián", "Ramírez"),
+        ("Mariana", "Vargas"),
+        ("Nicolás", "Jiménez"),
+        ("Paula", "Cárdenas"),
+        ("Felipe", "Navarro"),
+        ("Isabella", "Mendoza"),
+        ("David", "Restrepo"),
+        ("Lucía", "Peña"),
+        ("Samuel", "Ortiz"),
+        ("Gabriela", "Silva"),
+        ("Tomás", "Reyes"),
+        ("Juliana", "Pardo"),
+        ("Miguel", "Duarte"),
+    ]
+
+    PERFILES_PROFESIONALES = [
+        {
+            "verificacion": "aprobado",
+            "identidad": "aprobado",
+            "disponible": True,
+            "experiencia": 8,
+            "descripcion": "Plomero especializado en fugas, redes hidráulicas e instalación de grifería residencial.",
+        },
+        {
+            "verificacion": "aprobado",
+            "identidad": "aprobado",
+            "disponible": True,
+            "experiencia": 6,
+            "descripcion": "Electricista con experiencia en iluminación, tomacorrientes y mantenimiento de instalaciones domésticas.",
+        },
+        {
+            "verificacion": "aprobado",
+            "identidad": "aprobado",
+            "disponible": True,
+            "experiencia": 5,
+            "descripcion": "Especialista en limpieza profunda, cocinas, baños y mantenimiento del hogar.",
+        },
+        {
+            "verificacion": "aprobado",
+            "identidad": "aprobado",
+            "disponible": False,
+            "experiencia": 9,
+            "descripcion": "Carpintero dedicado a reparación de muebles, puertas y fabricación de estanterías.",
+        },
+        {
+            "verificacion": "pendiente",
+            "identidad": "pendiente",
+            "disponible": False,
+            "experiencia": 3,
+            "descripcion": "Pintora residencial con experiencia en resane y acabados interiores.",
+        },
+        {
+            "verificacion": "en_revision",
+            "identidad": "aprobado",
+            "disponible": False,
+            "experiencia": 4,
+            "descripcion": "Cerrajero enfocado en instalación y mantenimiento de cerraduras de seguridad.",
+        },
+        {
+            "verificacion": "rechazado",
+            "identidad": "rechazado",
+            "disponible": False,
+            "experiencia": 2,
+            "descripcion": "Técnico de mantenimiento general para pequeñas reparaciones domésticas.",
+        },
+        {
+            "verificacion": "aprobado",
+            "identidad": "aprobado",
+            "disponible": True,
+            "experiencia": 7,
+            "descripcion": "Profesional de plomería y mantenimiento preventivo de redes de agua.",
+        },
+        {
+            "verificacion": "pendiente",
+            "identidad": "aprobado",
+            "disponible": False,
+            "experiencia": 3,
+            "descripcion": "Auxiliar de limpieza residencial y organización de espacios.",
+        },
+        {
+            "verificacion": "aprobado",
+            "identidad": "aprobado",
+            "disponible": True,
+            "experiencia": 10,
+            "descripcion": "Técnico electricista con trayectoria en instalaciones y diagnóstico de fallas.",
+        },
+    ]
+
+    DIRECCIONES = [
+        "Calle 26 # 18-42, Bogotá",
+        "Carrera 15 # 93-20, Bogotá",
+        "Calle 80 # 24-16, Bogotá",
+        "Carrera 7 # 45-30, Bogotá",
+        "Calle 134 # 9-18, Bogotá",
+        "Carrera 68 # 22-15, Bogotá",
+        "Calle 53 # 16-27, Bogotá",
+        "Carrera 30 # 12-40, Bogotá",
+        "Calle 116 # 50-08, Bogotá",
+        "Carrera  Deza # 10-35, Bogotá",
+    ]
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Simula la carga sin guardar los cambios.",
+            help="Simula la carga y revierte los registros creados.",
         )
 
     def handle(self, *args, **options):
+        self.archivos_creados = []
+
         try:
             with transaction.atomic():
                 self.crear_datos()
@@ -42,11 +165,62 @@ class Command(BaseCommand):
                     raise DryRunRollback()
 
         except DryRunRollback:
+            self.eliminar_archivos_creados()
             self.stdout.write(
                 self.style.WARNING(
-                    "Simulación terminada. No se guardó ningún registro."
+                    "Simulación terminada: se revirtieron los registros "
+                    "y se eliminaron los archivos temporales."
                 )
             )
+            return
+        except Exception:
+            self.eliminar_archivos_creados()
+            raise
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Carga de demostración finalizada correctamente."
+            )
+        )
+        self.stdout.write(
+            f"Contraseña común de las cuentas demo: {self.PASSWORD_DEMO}"
+        )
+
+    def eliminar_archivos_creados(self):
+        for storage, nombre in self.archivos_creados:
+            try:
+                storage.delete(nombre)
+            except Exception:
+                pass
+        self.archivos_creados.clear()
+
+    def guardar_archivo(self, campo, nombre, contenido):
+        campo.save(nombre, contenido, save=False)
+        self.archivos_creados.append((campo.storage, campo.name))
+
+    def crear_imagen_portafolio(self, titulo):
+        buffer = BytesIO()
+        imagen = Image.new("RGB", (900, 600), "#e8eef4")
+        dibujo = ImageDraw.Draw(imagen)
+        dibujo.rectangle((35, 35, 865, 565), outline="#36536b", width=8)
+        dibujo.text((75, 250), "SERVIHOME", fill="#183247")
+        dibujo.text((75, 300), titulo[:55], fill="#183247")
+        imagen.save(buffer, format="PNG")
+        return ContentFile(buffer.getvalue())
+
+    def crear_pdf_documento(self, nombre, tipo):
+        buffer = BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=letter)
+        pdf.setTitle("Documento ficticio de demostracion ServiHome")
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawString(55, 735, "SERVIHOME - DOCUMENTO DE DEMOSTRACION")
+        pdf.setFont("Helvetica", 11)
+        pdf.drawString(55, 700, f"Nombre ficticio: {nombre}")
+        pdf.drawString(55, 680, f"Tipo de documento: {tipo}")
+        pdf.drawString(55, 640, "Archivo de prueba. No corresponde a una persona real.")
+        pdf.drawString(55, 620, "Generado automaticamente para poblar el entorno demo.")
+        pdf.save()
+        return ContentFile(buffer.getvalue())
 
     def crear_datos(self):
         User = get_user_model()
@@ -54,10 +228,13 @@ class Command(BaseCommand):
 
         creados = {
             "Usuarios": 0,
+            "Perfiles": 0,
             "Categorías": 0,
             "Servicios": 0,
-            "Ofertas": 0,
-            "Trabajos": 0,
+            "Ofertas profesionales": 0,
+            "Documentos": 0,
+            "Trabajos de portafolio": 0,
+            "Solicitudes": 0,
             "Propuestas": 0,
             "Reseñas": 0,
             "Pagos": 0,
@@ -67,373 +244,502 @@ class Command(BaseCommand):
         clientes = []
         profesionales = []
 
-        # -------------------------------------------------
-        # 1. CREAR 50 CLIENTES Y 50 PROFESIONALES
-        # -------------------------------------------------
+        # 1. Usuarios y perfiles: 10 clientes y 10 profesionales.
+        for indice, (nombre, apellido) in enumerate(self.NOMBRES):
+            rol = "cliente" if indice < 10 else "profesional"
+            numero = indice + 1 if rol == "cliente" else indice - 9
+            from unicodedata import normalize
 
-        for i in range(1, 51):
-            for rol, lista, prefijo in [
-                ("cliente", clientes, "demo_cliente"),
-                ("profesional", profesionales, "demo_profesional"),
-            ]:
-                username = f"{prefijo}_{i:03d}"
+            nombre_usuario = normalize("NFKD", f"{nombre}.{apellido}")
+            nombre_usuario = "".join(
+                caracter for caracter in nombre_usuario
+                if not __import__("unicodedata").combining(caracter)
+            ).lower()
 
-                user, creado = User.objects.get_or_create(
-                    username=username,
-                    defaults={
-                        "email": f"{username}@example.com",
-                        "first_name": f"{rol.capitalize()}",
-                        "last_name": f"Demostracion {i}",
-                    },
-                )
+            username = nombre_usuario
+            email = f"{username}@servihome.test"
 
-                if creado:
-                    user.set_unusable_password()
-                    user.save(update_fields=["password"])
-                    creados["Usuarios"] += 1
-
-                perfil = Perfil.objects.get(usuario=user)
-
-                if perfil.rol != rol and not creado:
-                    raise CommandError(
-                        f"El usuario {username} ya existe con otro rol. "
-                        "No se modificó."
-                    )
-
-                if creado:
-                    perfil.rol = rol
-                    perfil.telefono = f"300{(1000000 + i):07d}"[-10:]
-                    perfil.direccion = (
-                        f"Dirección ficticia de demostración {i}"
-                    )
-
-                    if rol == "profesional":
-                        perfil.estado_verificacion = "aprobado"
-                        perfil.estado_identidad = "aprobado"
-                        perfil.descripcion_profesional = (
-                            "Profesional de demostración ServiHome."
-                        )
-                        perfil.experiencia_anos = (i % 10) + 1
-                        perfil.disponible = True
-
-                    perfil.save()
-
-                lista.append(perfil)
-
-        # -------------------------------------------------
-        # 2. CATEGORÍAS
-        # -------------------------------------------------
-
-        categorias_datos = [
-            ("Plomeria", "Servicios de plomería."),
-            ("Electricidad", "Instalaciones y reparaciones eléctricas."),
-            ("Carpinteria", "Trabajos de carpintería."),
-            ("Pintura", "Pintura y mantenimiento de paredes."),
-            ("Cerrajeria", "Servicios de cerrajería."),
-            ("Limpieza", "Servicios de limpieza del hogar."),
-        ]
-
-        categorias = {}
-
-        for nombre, descripcion in categorias_datos:
-            categoria, creado = Categoria.objects.get_or_create(
-                nombre=nombre,
+            user, usuario_creado = User.objects.get_or_create(
+                username=username,
                 defaults={
-                    "descripcion": descripcion,
-                    "activa": True,
+                    "email": email,
+                    "first_name": nombre,
+                    "last_name": apellido,
                 },
             )
 
+            if usuario_creado:
+                user.set_password(self.PASSWORD_DEMO)
+                user.save(update_fields=["password"])
+                creados["Usuarios"] += 1
+            else:
+                if user.is_superuser:
+                    raise CommandError(
+                        f"El usuario {username} es administrador y no se modificará."
+                    )
+                user.email = email
+                user.first_name = nombre
+                user.last_name = apellido
+                user.save(update_fields=["email", "first_name", "last_name"])
+
+            perfil, perfil_creado = Perfil.objects.get_or_create(
+                usuario=user,
+                defaults={"rol": rol},
+            )
+
+            if perfil.rol != rol:
+                if usuario_creado:
+                    perfil.rol = rol
+                    perfil.save(update_fields=["rol"])
+                else:
+                    raise CommandError(
+                        f"El usuario {username} ya existe con un rol diferente."
+                    )
+            if perfil_creado:
+                creados["Perfiles"] += 1
+
+            perfil.telefono = f"310555{numero:04d}"
+            perfil.direccion = self.DIRECCIONES[(indice) % len(self.DIRECCIONES)]
+
+            if rol == "cliente":
+                perfil.estado_verificacion = "no_aplica"
+                perfil.estado_identidad = (
+                    "aprobado" if numero <= 8 else "pendiente"
+                )
+                perfil.descripcion_profesional = ""
+                perfil.experiencia_anos = 0
+                perfil.disponible = True
+                clientes.append(perfil)
+            else:
+                datos = self.PERFILES_PROFESIONALES[numero - 1]
+                perfil.estado_verificacion = datos["verificacion"]
+                perfil.estado_identidad = datos["identidad"]
+                perfil.descripcion_profesional = datos["descripcion"]
+                perfil.experiencia_anos = datos["experiencia"]
+                perfil.disponible = datos["disponible"]
+                profesionales.append(perfil)
+
+            perfil.two_factor_enabled = False
+            perfil.totp_secret = ""
+            perfil.save()
+
+        # 2. Categorías.
+        categorias_datos = [
+            ("Plomeria", "Reparación e instalación de redes hidráulicas."),
+            ("Electricidad", "Instalaciones y mantenimiento eléctrico."),
+            ("Carpinteria", "Reparación y fabricación de elementos en madera."),
+            ("Pintura", "Pintura, resanes y acabados residenciales."),
+            ("Cerrajeria", "Instalación y mantenimiento de cerraduras."),
+            ("Limpieza", "Limpieza profunda y mantenimiento del hogar."),
+        ]
+
+        categorias = {}
+        for nombre, descripcion in categorias_datos:
+            categoria, creado = Categoria.objects.get_or_create(
+                nombre=nombre,
+                defaults={"descripcion": descripcion, "activa": True},
+            )
             creados["Categorías"] += int(creado)
             categorias[nombre] = categoria
 
-        # -------------------------------------------------
-        # 3. SERVICIOS
-        # -------------------------------------------------
-
+        # 3. Servicios.
         servicios_datos = {
             "Plomeria": [
                 "Reparación de fugas",
                 "Instalación de grifería",
-                "Mantenimiento de tuberías",
             ],
             "Electricidad": [
                 "Instalación de luminarias",
                 "Revisión de conexiones",
-                "Cambio de tomacorrientes",
             ],
             "Carpinteria": [
                 "Reparación de puertas",
                 "Instalación de estanterías",
-                "Ajuste de muebles",
             ],
             "Pintura": [
                 "Pintura de habitaciones",
-                "Pintura de fachadas",
                 "Resane de paredes",
             ],
             "Cerrajeria": [
-                "Apertura de cerraduras",
                 "Cambio de cerraduras",
                 "Instalación de chapas",
             ],
             "Limpieza": [
                 "Limpieza profunda",
-                "Limpieza de cocina",
                 "Limpieza de baños",
             ],
         }
 
         servicios = []
-
         for nombre_categoria, nombres in servicios_datos.items():
-            for j, nombre in enumerate(nombres):
+            for posicion, nombre in enumerate(nombres):
                 servicio, creado = Servicio.objects.get_or_create(
                     categoria=categorias[nombre_categoria],
                     nombre=nombre,
                     defaults={
                         "descripcion": (
-                            f"Servicio de demostración: {nombre}."
+                            f"{nombre}: atención residencial con "
+                            "materiales y alcance acordados con el cliente."
                         ),
-                        "precio_base": Decimal("80000") + Decimal(j * 15000),
+                        "precio_base": Decimal("80000")
+                        + Decimal(posicion * 20000),
                         "activo": True,
                     },
                 )
-
                 creados["Servicios"] += int(creado)
                 servicios.append(servicio)
 
-        # -------------------------------------------------
-        # 4. OFERTAS DE PROFESIONALES
-        # -------------------------------------------------
-
+        # 4. Ofertas: aprobadas, pendientes y rechazadas.
         ofertas = []
+        combinaciones = [
+            (0, 0, "aprobado"),
+            (0, 1, "aprobado"),
+            (1, 2, "aprobado"),
+            (1, 3, "aprobado"),
+            (2, 10, "aprobado"),
+            (2, 11, "aprobado"),
+            (3, 4, "aprobado"),
+            (7, 0, "aprobado"),
+            (7, 1, "aprobado"),
+            (9, 2, "aprobado"),
+            (4, 6, "pendiente"),
+            (5, 8, "pendiente"),
+            (6, 9, "rechazado"),
+            (8, 10, "pendiente"),
+            (9, 3, "aprobado"),
+        ]
 
-        for i in range(16):
-            profesional = profesionales[i % 50]
-            servicio = servicios[(i * 3) % len(servicios)]
-
+        for indice, (indice_profesional, indice_servicio, estado) in enumerate(
+            combinaciones, start=1
+        ):
+            profesional = profesionales[indice_profesional]
+            servicio = servicios[indice_servicio]
             oferta, creado = ServicioProfesional.objects.get_or_create(
                 servicio=servicio,
                 profesional=profesional,
                 defaults={
-                    "precio": Decimal("70000") + Decimal(i * 5000),
-                    "estado_aprobacion": (
-                        "pendiente" if i % 4 == 0 else "aprobado"
-                    ),
+                    "precio": Decimal("65000") + Decimal(indice * 7000),
+                    "estado_aprobacion": estado,
                 },
             )
-
-            creados["Ofertas"] += int(creado)
+            creados["Ofertas profesionales"] += int(creado)
             ofertas.append(oferta)
 
         ofertas_aprobadas = [
             oferta
-            for oferta in ServicioProfesional.objects.select_related(
-                "servicio", "profesional"
-            ).filter(
-                estado_aprobacion="aprobado",
-                profesional__in=profesionales,
-            )
+            for oferta in ofertas
+            if oferta.estado_aprobacion == "aprobado"
+            and oferta.profesional.estado_verificacion == "aprobado"
+            and oferta.profesional.disponible
         ]
 
         if not ofertas_aprobadas:
             raise CommandError(
-                "No hay ofertas aprobadas para crear los trabajos."
+                "No hay ofertas aprobadas de profesionales disponibles."
             )
 
-        # -------------------------------------------------
-        # 5. CREAR 30 TRABAJOS
-        # -------------------------------------------------
+        # 5. Documentos privados ficticios para revisión de identidad.
+        for indice, profesional in enumerate(profesionales, start=1):
+            tipo_estado = profesional.estado_identidad
+            observacion = f"[DEMO-SERVIHOME] Identidad profesional {indice:02d}"
 
-        estados = (
+            documento, creado = DocumentoVerificacion.objects.get_or_create(
+                perfil=profesional,
+                tipo="identidad",
+                observacion=observacion,
+                defaults={"estado": tipo_estado},
+            )
+
+            if creado:
+                archivo = self.crear_pdf_documento(
+                    profesional.usuario.get_full_name(),
+                    "Identidad",
+                )
+                self.guardar_archivo(
+                    documento.archivo,
+                    f"demo_identidad_{indice:02d}.pdf",
+                    archivo,
+                )
+                documento.save()
+                creados["Documentos"] += 1
+
+        # Documentos de experiencia para seis profesionales.
+        for indice, profesional in enumerate(profesionales[:6], start=1):
+            observacion = (
+                f"[DEMO-SERVIHOME] Experiencia profesional {indice:02d}"
+            )
+            documento, creado = DocumentoVerificacion.objects.get_or_create(
+                perfil=profesional,
+                tipo="experiencia",
+                observacion=observacion,
+                defaults={
+                    "estado": profesional.estado_verificacion,
+                },
+            )
+            if creado:
+                archivo = self.crear_pdf_documento(
+                    profesional.usuario.get_full_name(),
+                    "Experiencia",
+                )
+                self.guardar_archivo(
+                    documento.archivo,
+                    f"demo_experiencia_{indice:02d}.pdf",
+                    archivo,
+                )
+                documento.save()
+                creados["Documentos"] += 1
+
+        # 6. Trabajos de portafolio con imágenes PNG válidas.
+        trabajos_portafolio = [
+            (0, 0, "Reparación de fuga en cocina"),
+            (0, 1, "Instalación de lavamanos"),
+            (1, 2, "Instalación de iluminación LED"),
+            (1, 3, "Mantenimiento de tablero eléctrico"),
+            (2, 10, "Limpieza profunda de apartamento"),
+            (2, 11, "Limpieza detallada de baño"),
+            (3, 4, "Restauración de puerta de madera"),
+            (7, 0, "Cambio de tubería residencial"),
+            (9, 2, "Adecuación de puntos de iluminación"),
+            (9, 3, "Revisión de conexiones eléctricas"),
+        ]
+
+        for indice, (indice_profesional, indice_servicio, titulo) in enumerate(
+            trabajos_portafolio, start=1
+        ):
+            profesional = profesionales[indice_profesional]
+            servicio = servicios[indice_servicio]
+            trabajo, creado = TrabajoPortafolio.objects.get_or_create(
+                profesional=profesional,
+                titulo=f"[DEMO] {titulo}",
+                defaults={
+                    "servicio": servicio,
+                    "descripcion": (
+                        f"Registro de demostración: {titulo.lower()}. "
+                        "Imagen ilustrativa generada para el entorno de pruebas."
+                    ),
+                    "activo": True,
+                },
+            )
+            if creado:
+                imagen = self.crear_imagen_portafolio(titulo)
+                self.guardar_archivo(
+                    trabajo.imagen,
+                    f"demo_portafolio_{indice:02d}.png",
+                    imagen,
+                )
+                trabajo.save()
+                creados["Trabajos de portafolio"] += 1
+
+        # 7. Solicitudes con todos los estados.
+        estados_solicitud = (
             ["pendiente"] * 5
-            + ["aceptada"] * 5
-            + ["en_proceso"] * 5
-            + ["completada"] * 10
-            + ["rechazada"] * 3
-            + ["cancelada"] * 2
+            + ["aceptada"] * 4
+            + ["en_proceso"] * 4
+            + ["completada"] * 8
+            + ["rechazada"] * 2
+            + ["cancelada"]
         )
 
-        trabajos = []
-
-        for i, estado in enumerate(estados, start=1):
-            oferta = ofertas_aprobadas[(i - 1) % len(ofertas_aprobadas)]
-            cliente = clientes[(i - 1) % len(clientes)]
-
-            precio = Decimal("90000") + Decimal(i * 7000)
+        solicitudes = []
+        for indice, estado in enumerate(estados_solicitud, start=1):
+            oferta = ofertas_aprobadas[(indice - 1) % len(ofertas_aprobadas)]
+            cliente = clientes[(indice - 1) % len(clientes)]
+            precio = Decimal("85000") + Decimal(indice * 6500)
 
             datos = {
                 "cliente": cliente,
                 "profesional": oferta.profesional,
                 "servicio": oferta.servicio,
                 "descripcion": (
-                    f"[DEMO-SERVIHOME] Trabajo de prueba {i:02d}"
+                    f"[DEMO-SERVIHOME] Solicitud {indice:02d}: "
+                    f"{oferta.servicio.nombre} para vivienda."
                 ),
-                "direccion_servicio": (
-                    f"Dirección ficticia de prueba {i:02d}, Bogotá"
-                ),
-                "fecha_solicitada": ahora + timedelta(days=(i % 15) - 7),
+                "direccion_servicio": self.DIRECCIONES[
+                    (indice - 1) % len(self.DIRECCIONES)
+                ],
+                "fecha_solicitada": ahora
+                + timedelta(days=(indice % 18) - 12),
                 "estado": estado,
             }
 
             if estado in ("aceptada", "en_proceso", "completada"):
                 datos["precio_acordado"] = precio
-                datos["codigo_inicio"] = f"{100000 + i:06d}"
+                datos["codigo_inicio"] = f"{310000 + indice:06d}"
 
             if estado in ("en_proceso", "completada"):
-                datos["codigo_finalizacion"] = f"{200000 + i:06d}"
+                datos["codigo_finalizacion"] = f"{420000 + indice:06d}"
 
             solicitud, creado = SolicitudServicio.objects.get_or_create(
                 descripcion=datos["descripcion"],
                 defaults=datos,
             )
+            creados["Solicitudes"] += int(creado)
+            solicitudes.append(solicitud)
 
-            creados["Trabajos"] += int(creado)
-            trabajos.append(solicitud)
+        completadas = [s for s in solicitudes if s.estado == "completada"]
+        pendientes = [s for s in solicitudes if s.estado == "pendiente"]
+        rechazadas = [s for s in solicitudes if s.estado == "rechazada"]
 
-        # -------------------------------------------------
-        # 6. PROPUESTAS DE PRECIO
-        # -------------------------------------------------
-
-        propuestas = []
-
-        trabajos_completados = [
-            t for t in trabajos if t.estado == "completada"
-        ]
-
-        trabajos_pendientes = [
-            t for t in trabajos if t.estado == "pendiente"
-        ]
-
-        for i, solicitud in enumerate(trabajos_completados[:6], start=1):
-            propuesta, creado = PropuestaPrecio.objects.get_or_create(
-                solicitud=solicitud,
-                proponente=solicitud.profesional,
-                precio=solicitud.precio_acordado,
-                defaults={
-                    "estado": "aceptada",
-                },
+        # 8. Propuestas aceptadas, pendientes y rechazadas.
+        propuestas_datos = []
+        for solicitud in completadas[:4]:
+            propuestas_datos.append(
+                (solicitud, solicitud.profesional, solicitud.precio_acordado, "aceptada")
+            )
+        for indice, solicitud in enumerate(pendientes[:3], start=1):
+            propuestas_datos.append(
+                (
+                    solicitud,
+                    solicitud.profesional,
+                    Decimal("100000") + Decimal(indice * 12000),
+                    "pendiente",
+                )
+            )
+        for solicitud in rechazadas[:1]:
+            propuestas_datos.append(
+                (
+                    solicitud,
+                    solicitud.profesional,
+                    Decimal("145000"),
+                    "rechazada",
+                )
             )
 
-            creados["Propuestas"] += int(creado)
-            propuestas.append(propuesta)
-
-        for i, solicitud in enumerate(trabajos_pendientes[:4], start=1):
+        for solicitud, proponente, precio, estado in propuestas_datos:
             propuesta, creado = PropuestaPrecio.objects.get_or_create(
                 solicitud=solicitud,
-                proponente=solicitud.profesional,
-                precio=Decimal("100000") + Decimal(i * 10000),
-                defaults={
-                    "estado": "pendiente",
-                },
+                proponente=proponente,
+                precio=precio,
+                defaults={"estado": estado},
             )
-
             creados["Propuestas"] += int(creado)
-            propuestas.append(propuesta)
 
-        # -------------------------------------------------
-        # 7. RESEÑAS DE TRABAJOS COMPLETADOS
-        # -------------------------------------------------
+        # 9. Reseñas: solo solicitudes completadas.
+        comentarios = [
+            "El profesional llegó puntual y explicó claramente el trabajo.",
+            "Buen resultado, dejó el espacio limpio y organizado.",
+            "Atención amable y solución efectiva al inconveniente.",
+            "Trabajo cuidadoso y precio acorde con lo conversado.",
+            "Servicio rápido; recomiendo mejorar la comunicación previa.",
+            "Cumplió con lo acordado y entregó recomendaciones útiles.",
+            "Muy buena calidad en los acabados.",
+            "La reparación quedó funcionando correctamente.",
+        ]
 
-        for i, solicitud in enumerate(trabajos_completados, start=1):
+        for indice, solicitud in enumerate(completadas, start=1):
             resena, creado = Resena.objects.get_or_create(
                 solicitud=solicitud,
                 defaults={
-                    "calificacion": (i % 5) + 1,
-                    "comentario": (
-                        f"[DEMO] Reseña de prueba número {i}."
-                    ),
+                    "calificacion": [5, 4, 5, 4, 3, 5, 4, 5][indice - 1],
+                    "comentario": comentarios[indice - 1],
                 },
             )
-
             creados["Reseñas"] += int(creado)
 
-        # -------------------------------------------------
-        # 8. PAGOS
-        # -------------------------------------------------
+        # 10. Pagos para las ocho solicitudes completadas.
+        estados_pago = [
+            "pagado",
+            "pagado",
+            "pagado",
+            "pagado",
+            "pendiente",
+            "pendiente",
+            "fallido",
+            "reembolsado",
+        ]
+        metodos_pago = [
+            "transferencia",
+            "tarjeta",
+            "efectivo",
+            "pasarela",
+            "transferencia",
+            "efectivo",
+            "tarjeta",
+            "pasarela",
+        ]
 
-        trabajos_para_pago = trabajos_completados[:8]
-
-        for i, solicitud in enumerate(trabajos_para_pago, start=1):
-            estado_pago = "pagado" if i <= 6 else "pendiente"
-
+        for indice, solicitud in enumerate(completadas, start=1):
+            estado = estados_pago[indice - 1]
             pago, creado = Pago.objects.get_or_create(
                 solicitud=solicitud,
                 defaults={
                     "monto_total": solicitud.precio_acordado,
                     "porcentaje_comision": Decimal("10.00"),
-                    "metodo": (
-                        "transferencia" if i % 2 == 0 else "efectivo"
-                    ),
-                    "estado": estado_pago,
-                    "referencia": f"DEMO-PAGO-{i:03d}",
+                    "metodo": metodos_pago[indice - 1],
+                    "estado": estado,
+                    "referencia": f"DEMO-PAGO-{indice:03d}",
                     "fecha_pago": (
-                        ahora - timedelta(days=i)
-                        if estado_pago == "pagado"
+                        ahora - timedelta(days=indice)
+                        if estado in ("pagado", "reembolsado")
                         else None
                     ),
                 },
             )
-
             creados["Pagos"] += int(creado)
 
-        # -------------------------------------------------
-        # 9. INCIDENTES
-        # -------------------------------------------------
-
+        # 11. Incidentes reportados por clientes o profesionales.
         tipos_incidente = [
             "danos_materiales",
             "incumplimiento",
             "comportamiento",
             "cobro_indebido",
             "otro",
+            "emergencia",
         ]
-
         estados_incidente = [
             "pendiente",
             "en_revision",
             "resuelto",
             "rechazado",
             "pendiente",
+            "resuelto",
+        ]
+        descripciones_incidente = [
+            "Se reportó un daño menor en un elemento cercano al área de trabajo.",
+            "El horario acordado no se cumplió y se solicita revisión.",
+            "Se solicita revisar la comunicación durante la prestación del servicio.",
+            "El valor cobrado no coincide con el precio acordado en la solicitud.",
+            "El cliente solicita acompañamiento para aclarar el cierre del servicio.",
+            "Se reportó una situación que requiere revisión prioritaria.",
         ]
 
-        for i in range(5):
-            solicitud = trabajos_completados[i]
+        for indice, solicitud in enumerate(completadas[:6]):
+            estado = estados_incidente[indice]
+            reportante = (
+                solicitud.cliente if indice % 2 == 0
+                else solicitud.profesional
+            )
             incidente, creado = Incidente.objects.get_or_create(
                 solicitud=solicitud,
-                tipo=tipos_incidente[i],
+                tipo=tipos_incidente[indice],
                 defaults={
-                    "reportado_por": solicitud.cliente,
-                    "descripcion": (
-                        f"[DEMO] Incidente de prueba número {i + 1}."
-                    ),
-                    "estado": estados_incidente[i],
+                    "reportado_por": reportante,
+                    "descripcion": descripciones_incidente[indice],
+                    "estado": estado,
                     "respuesta_administrador": (
-                        "Caso revisado por administración."
-                        if estados_incidente[i] in ("resuelto", "rechazado")
+                        "Caso revisado por el equipo de administración."
+                        if estado in ("resuelto", "rechazado")
                         else ""
                     ),
                 },
             )
-
             creados["Incidentes"] += int(creado)
 
-        # -------------------------------------------------
-        # 10. RESUMEN
-        # -------------------------------------------------
-
+        # Resumen de registros nuevos en esta ejecución.
         self.stdout.write("")
         self.stdout.write(
             self.style.SUCCESS("RESUMEN DE DATOS DE DEMOSTRACIÓN")
         )
-
+        total = 0
         for nombre, cantidad in creados.items():
             self.stdout.write(f"{nombre}: {cantidad} nuevos")
+            total += cantidad
 
-        self.stdout.write("")
+        self.stdout.write(f"Total de registros nuevos: {total}")
         self.stdout.write(
-            self.style.SUCCESS(
-                "Proceso de creación finalizado."
-            )
+            "Cuentas creadas: 10 clientes y 10 profesionales."
+        )
+        self.stdout.write(
+            "Estados incluidos: verificación, identidad, disponibilidad, "
+            "ofertas, solicitudes, propuestas, pagos e incidentes."
         )
