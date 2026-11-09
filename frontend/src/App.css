@@ -522,3 +522,25 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 .boton-panico:hover { background: #a93226; }
 .aviso-emergencia { padding: 10px 12px; border-radius: 10px; background: #fdecea; color: #8c1d18; font-size: .9rem; }
 .aviso-emergencia a { color: #8c1d18; font-weight: 700; }
+/* ===== Inicio por rol ===== */
+.tablero {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px; margin-bottom: 28px;
+}
+.dato-tablero {
+  display: flex; flex-direction: column; gap: 6px; padding: 20px;
+  border: 1px solid #e3ebe5; border-radius: 16px; background: #fff;
+  color: inherit; text-decoration: none; box-shadow: 0 5px 18px #23462d0b;
+}
+.dato-tablero:hover { border-color: #b7d5c0; }
+.dato-tablero > span { color: #65736b; font-size: .88rem; }
+.dato-tablero > strong { color: #23865b; font-size: 1.8rem; line-height: 1.2; }
+
+.titulo-tablero { margin: 8px 0 14px; color: #24392b; font-size: 1.1rem; }
+.lista-atencion { display: grid; gap: 10px; margin: 0 0 28px; padding: 0; list-style: none; }
+.lista-atencion li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 14px 16px; border: 1px solid #e3ebe5; border-radius: 12px; background: #fff;
+}
+.lista-atencion li > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lista-atencion strong { color: #24392b; }

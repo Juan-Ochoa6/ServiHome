@@ -17,6 +17,16 @@ import Panel from './pages/Panel.jsx';
 import Login from './pages/Login.jsx';
 import Registro from './pages/Registro.jsx';
 
+// El catálogo es para visitantes, clientes y administradores; los profesionales
+// vuelven a su inicio.
+function Catalogo({ children }) {
+  return (
+    <RutaProtegida visitante roles={['cliente', 'administrador']}>
+      {children}
+    </RutaProtegida>
+  );
+}
+
 function App() {
   const { pathname } = useLocation();
 
@@ -32,9 +42,12 @@ function App() {
       <main>
         <Routes>
           <Route path="/" element={<Inicio />} />
-          <Route path="/servicios" element={<Servicios />} />
-          <Route path="/profesionales" element={<Profesionales />} />
-          <Route path="/profesionales/:id" element={<PerfilProfesional />} />
+          <Route path="/servicios" element={<Catalogo><Servicios /></Catalogo>} />
+          <Route path="/profesionales" element={<Catalogo><Profesionales /></Catalogo>} />
+          <Route
+            path="/profesionales/:id"
+            element={<Catalogo><PerfilProfesional /></Catalogo>}
+          />
           <Route path="/login" element={<Login />} />
           <Route path="/registro" element={<Registro />} />
           <Route

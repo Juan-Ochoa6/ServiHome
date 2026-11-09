@@ -5,15 +5,11 @@ import { useAuth } from '../auth/useAuth.js';
 import Campo from '../components/Campo.jsx';
 import Mensaje from '../components/Mensaje.jsx';
 
-const RUTA_INICIAL = {
-  administrador: '/panel',
-  profesional: '/solicitudes',
-};
 
 function Login() {
   const { sesion, iniciar } = useAuth();
   const location = useLocation();
-  const destino = location.state?.desde?.pathname ?? RUTA_INICIAL[sesion?.rol] ?? '/';
+  const destino = location.state?.desde?.pathname ?? '/';
 
   const [credenciales, setCredenciales] = useState({ username: '', password: '' });
   const [desafio, setDesafio] = useState(null); // { challenge, qr }
