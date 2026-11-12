@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   cambiarEstadoDocumento,
   cambiarEstadoOferta,
@@ -15,6 +16,9 @@ import {
   etiquetaVerificacion,
 } from '../utils/verificacion.js';
 import EstadoCarga from '../components/EstadoCarga.jsx';
+import PanelFinanzas from '../components/PanelFinanzas.jsx';
+import PanelIncidentes from '../components/PanelIncidentes.jsx';
+import PanelPagos from '../components/PanelPagos.jsx';
 import Mensaje from '../components/Mensaje.jsx';
 import BotonDocumento from '../components/BotonDocumento.jsx';
 
@@ -80,7 +84,15 @@ function TarjetaDocumento({ documento, ocupado, onResolver }) {
 }
 
 function Panel() {
-  const [pestana, setPestana] = useState('documentos');
+  const [parametros] = useSearchParams();
+  const pestanaInicial = parametros.get('pestana');
+  const [pestana, setPestana] = useState(
+    ['documentos', 'profesionales', 'ofertas', 'pagos', 'incidentes', 'finanzas'].includes(
+      pestanaInicial,
+    )
+      ? pestanaInicial
+      : 'documentos',
+  );
   const [filtroDocumentos, setFiltroDocumentos] = useState('pendiente');
 
   const profesionales = useCargar(listarProfesionalesPendientes);
@@ -137,6 +149,9 @@ function Panel() {
     { id: 'documentos', texto: 'Documentos', total: documentos.datos?.length },
     { id: 'profesionales', texto: 'Profesionales', total: profesionales.datos?.length },
     { id: 'ofertas', texto: 'Ofertas', total: ofertas.datos?.length },
+    { id: 'pagos', texto: 'Pagos' },
+    { id: 'incidentes', texto: 'Incidentes' },
+    { id: 'finanzas', texto: 'Finanzas' },
   ];
 
   return (
@@ -384,7 +399,11 @@ function Panel() {
           )}
         </>
       )}
+      {pestana === 'pagos' && <PanelPagos />}
+      {pestana === 'incidentes' && <PanelIncidentes />}
+      {pestana === 'finanzas' && <PanelFinanzas />}
     </section>
+
   );
 }
 

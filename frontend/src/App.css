@@ -544,3 +544,26 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 }
 .lista-atencion li > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .lista-atencion strong { color: #24392b; }
+/* ===== Panel: pagos, incidentes y finanzas ===== */
+.nota-panel { margin: 0 0 18px; color: #65736b; font-size: .88rem; line-height: 1.6; }
+
+.tarjeta-urgente { border-color: #e6b0aa; background: #fffafa; }
+.dato-alerta > strong { color: #c0392b; }
+.tarjeta-panel textarea {
+  width: 100%; padding: 11px 14px; border: 1px solid #d7e3da; border-radius: 12px;
+  background: #fff; color: #20332c; font: inherit; resize: vertical;
+}
+
+.tabla-scroll { width: 100%; overflow-x: auto; }
+.tabla-finanzas {
+  width: 100%; border-collapse: separate; border-spacing: 0; background: #fff;
+  border: 1px solid #e3ebe5; border-radius: 12px; overflow: hidden;
+}
+.tabla-finanzas th, .tabla-finanzas td {
+  padding: 12px 14px; border-bottom: 1px solid #eef3ef; text-align: right;
+  font-size: .9rem; white-space: nowrap;
+}
+.tabla-finanzas th:first-child, .tabla-finanzas td:first-child { text-align: left; }
+.tabla-finanzas th { background: #f8fbf8; color: #24392b; font-weight: 700; }
+.tabla-finanzas tbody tr:last-child td { border-bottom: 0; }
+.barra-ganancia { display: block; min-width: 4px; height: 8px; margin: 6px 0 0 auto; border-radius: 4px; background: #23865b; }

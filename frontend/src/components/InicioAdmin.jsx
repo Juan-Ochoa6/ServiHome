@@ -2,11 +2,16 @@ import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   listarDocumentosAdmin,
+  listarIncidentes,
   listarOfertasPendientes,
+  listarPagosAdmin,
   listarProfesionalesPendientes,
 } from '../services/admin.js';
 import { useCargar } from '../hooks/useCargar.js';
 import { useAuth } from '../auth/useAuth.js';
+
+const ABIERTO = (incidente) => ['pendiente', 'en_revision'].includes(incidente.estado);
+const PENDIENTE = (elemento) => elemento.estado === 'pendiente';
 
 function InicioAdmin() {
   const { sesion } = useAuth();
@@ -15,13 +20,24 @@ function InicioAdmin() {
   const ofertas = useCargar(listarOfertasPendientes);
   const cargarDocumentos = useCallback(() => listarDocumentosAdmin('pendiente'), []);
   const documentos = useCargar(cargarDocumentos);
+  const pagos = useCargar(listarPagosAdmin);
+  const incidentes = useCargar(listarIncidentes);
 
-  const cantidad = (consulta) => (consulta.datos ? consulta.datos.length : '—');
+  const contar = (consulta, predicado = () => true) =>
+    consulta.datos ? consulta.datos.filter(predicado).length : null;
 
-  const listos = [documentos, profesionales, ofertas].every((consulta) => consulta.datos);
-  const total = listos
-    ? documentos.datos.length + profesionales.datos.length + ofertas.datos.length
-    : null;
+  const cantidades = {
+    documentos: contar(documentos),
+    profesionales: contar(profesionales),
+    ofertas: contar(ofertas),
+    pagos: contar(pagos, PENDIENTE),
+    incidentes: contar(incidentes, ABIERTO),
+  };
+
+  const valores = Object.values(cantidades);
+  const listos = valores.every((valor) => valor !== null);
+  const total = listos ? valores.reduce((suma, valor) => suma + valor, 0) : null;
+  const mostrar = (valor) => (valor === null ? '—' : valor);
 
   return (
     <section className="seccion">
@@ -36,20 +52,38 @@ function InicioAdmin() {
       </div>
 
       <div className="tablero">
-        <Link className="dato-tablero" to="/panel">
+        <Link className="dato-tablero" to="/panel?pestana=documentos">
           <span>Documentos</span>
-          <strong>{cantidad(documentos)}</strong>
+          <strong>{mostrar(cantidades.documentos)}</strong>
           <span>por revisar</span>
         </Link>
-        <Link className="dato-tablero" to="/panel">
+        <Link className="dato-tablero" to="/panel?pestana=profesionales">
           <span>Profesionales</span>
-          <strong>{cantidad(profesionales)}</strong>
+          <strong>{mostrar(cantidades.profesionales)}</strong>
           <span>por aprobar</span>
         </Link>
-        <Link className="dato-tablero" to="/panel">
+        <Link className="dato-tablero" to="/panel?pestana=ofertas">
           <span>Ofertas</span>
-          <strong>{cantidad(ofertas)}</strong>
+          <strong>{mostrar(cantidades.ofertas)}</strong>
           <span>por aprobar</span>
+        </Link>
+        <Link className="dato-tablero" to="/panel?pestana=pagos">
+          <span>Pagos</span>
+          <strong>{mostrar(cantidades.pagos)}</strong>
+          <span>por confirmar</span>
+        </Link>
+        <Link
+          className={`dato-tablero ${cantidades.incidentes > 0 ? 'dato-alerta' : ''}`}
+          to="/panel?pestana=incidentes"
+        >
+          <span>Incidentes</span>
+          <strong>{mostrar(cantidades.incidentes)}</strong>
+          <span>abiertos</span>
+        </Link>
+        <Link className="dato-tablero" to="/panel?pestana=finanzas">
+          <span>Finanzas</span>
+          <strong>$</strong>
+          <span>ingresos y comisiones</span>
         </Link>
       </div>
 
