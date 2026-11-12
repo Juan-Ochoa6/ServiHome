@@ -30,7 +30,7 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.getenv(
     'ALLOWED_HOSTS',
-    'api.servihome.com.co'
+    'api.servihome.com.co,localhost,127.0.0.1'
 ).split(',')
 # Configuración CSRF para producción
 CSRF_TRUSTED_ORIGINS = [
@@ -54,6 +54,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:3000',
     'https://servihome.com.co',
     'https://www.servihome.com.co',
+    'https://servi-home-qe8pkdq6e-juan-ochoa6.vercel.app',
 ]
 
 
