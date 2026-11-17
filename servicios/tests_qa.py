@@ -15,7 +15,7 @@ from servicios.models import (
 )
 
 
-class PropuestasQATests(APITestCase):
+class BaseQA(APITestCase):
 
     def setUp(self):
         self.usuario_cliente = User.objects.create_user(
@@ -75,6 +75,10 @@ class PropuestasQATests(APITestCase):
         )
 
         self.url = f'/api/solicitudes/{self.solicitud.pk}/propuestas/'
+        self.url_estado = f'/api/solicitudes/{self.solicitud.pk}/estado/'
+
+
+class PropuestasQATests(BaseQA):
 
     def test_cliente_crea_propuesta_valida(self):
         self.client.force_authenticate(user=self.usuario_cliente)
@@ -210,3 +214,167 @@ class PropuestasQATests(APITestCase):
 
         propuesta.refresh_from_db()
         self.assertEqual(propuesta.estado, 'aceptada')
+
+
+class EstadosQATests(BaseQA):
+
+    def test_cliente_no_puede_iniciar_el_servicio(self):
+        self.solicitud.estado = 'aceptada'
+        self.solicitud.save(update_fields=['estado'])
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'en_proceso', 'codigo': '123456'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'aceptada')
+
+
+    def test_cliente_no_puede_cancelar_en_proceso(self):
+        self.solicitud.estado = 'en_proceso'
+        self.solicitud.save(update_fields=['estado'])
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'cancelada'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'en_proceso')
+
+    def test_profesional_no_puede_saltarse_pasos(self):
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'completada', 'codigo': '123456'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'pendiente')
+
+    def test_profesional_ajeno_no_puede_cambiar_estado(self):
+        usuario_ajeno = User.objects.create_user(
+            username='qa_ajeno_estado',
+            password='ClaveQaAjeno123!'
+        )
+        perfil_ajeno = usuario_ajeno.perfil
+        perfil_ajeno.rol = 'profesional'
+        perfil_ajeno.estado_verificacion = 'aprobado'
+        perfil_ajeno.estado_identidad = 'aprobado'
+        perfil_ajeno.disponible = True
+        perfil_ajeno.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'estado_identidad',
+                'disponible',
+            ]
+        )
+
+        self.client.force_authenticate(user=usuario_ajeno)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'rechazada'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'pendiente')
+
+    def test_solicitud_cancelada_no_se_puede_reactivar(self):
+        self.solicitud.estado = 'cancelada'
+        self.solicitud.save(update_fields=['estado'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'en_proceso', 'codigo': '123456'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'cancelada')
+
+    def test_codigo_de_inicio_incorrecto_da_400(self):
+        self.solicitud.estado = 'aceptada'
+        self.solicitud.codigo_inicio = '123456'
+        self.solicitud.save(update_fields=['estado', 'codigo_inicio'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'en_proceso', 'codigo': '654321'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'aceptada')
+
+    def test_inicio_correcto_y_codigo_no_se_reutiliza(self):
+        self.solicitud.estado = 'aceptada'
+        self.solicitud.codigo_inicio = '123456'
+        self.solicitud.save(update_fields=['estado', 'codigo_inicio'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        primera = self.client.patch(
+            self.url_estado,
+            {'estado': 'en_proceso', 'codigo': '123456'},
+            format='json'
+        )
+        self.assertEqual(primera.status_code, status.HTTP_200_OK)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'en_proceso')
+        self.assertEqual(len(self.solicitud.codigo_finalizacion), 6)
+
+        segunda = self.client.patch(
+            self.url_estado,
+            {'estado': 'en_proceso', 'codigo': '123456'},
+            format='json'
+        )
+        self.assertEqual(segunda.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_solicitud_rechazada_no_se_puede_reactivar(self):
+        self.solicitud.estado = 'rechazada'
+        self.solicitud.save(update_fields=['estado'])
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'cancelada'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'rechazada')
+
+    def test_codigo_de_finalizacion_incorrecto_da_400(self):
+        self.solicitud.estado = 'en_proceso'
+        self.solicitud.codigo_finalizacion = '654321'
+        self.solicitud.save(
+            update_fields=['estado', 'codigo_finalizacion']
+        )
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'completada', 'codigo': '111111'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'en_proceso')
