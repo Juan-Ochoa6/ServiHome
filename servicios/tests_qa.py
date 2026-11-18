@@ -464,3 +464,28 @@ class PagosQATests(BaseQA):
 
         pago.refresh_from_db()
         self.assertEqual(pago.estado, 'pagado')
+
+    def test_cliente_y_profesional_no_pueden_cambiar_estado_de_pago(self):
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('50000.00'),
+            metodo='efectivo'
+        )
+        url_pago = f'/api/pagos/{pago.pk}/estado/'
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        como_cliente = self.client.patch(
+            url_pago, {'estado': 'pagado'}, format='json'
+        )
+        self.assertEqual(como_cliente.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        como_profesional = self.client.patch(
+            url_pago, {'estado': 'pagado'}, format='json'
+        )
+        self.assertEqual(
+            como_profesional.status_code, status.HTTP_403_FORBIDDEN
+        )
+
+        pago.refresh_from_db()
+        self.assertEqual(pago.estado, 'pendiente')
