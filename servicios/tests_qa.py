@@ -439,3 +439,28 @@ class PagosQATests(BaseQA):
 
         pago.refresh_from_db()
         self.assertEqual(pago.estado, 'reembolsado')
+
+    def test_pago_pagado_no_puede_pasar_a_fallido(self):
+        usuario_admin = User.objects.create_user(
+            username='qa_admin',
+            password='ClaveQaAdmin123!',
+            is_staff=True
+        )
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('50000.00'),
+            metodo='efectivo'
+        )
+        pago.estado = 'pagado'
+        pago.save()
+
+        self.client.force_authenticate(user=usuario_admin)
+        respuesta = self.client.patch(
+            f'/api/pagos/{pago.pk}/estado/',
+            {'estado': 'fallido'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        pago.refresh_from_db()
+        self.assertEqual(pago.estado, 'pagado')
