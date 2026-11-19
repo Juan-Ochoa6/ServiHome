@@ -659,3 +659,138 @@ class PortafolioQATests(BaseQA):
         self.assertTrue(
             TrabajoPortafolio.objects.filter(pk=trabajo.pk).exists()
         )
+
+
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from usuarios.models import DocumentoVerificacion
+
+
+class DocumentosQATests(BaseQA):
+
+    def crear_profesional_ajeno(self, username):
+        usuario = User.objects.create_user(
+            username=username,
+            password='ClaveQaAjeno123!'
+        )
+        perfil = usuario.perfil
+        perfil.rol = 'profesional'
+        perfil.estado_verificacion = 'aprobado'
+        perfil.estado_identidad = 'aprobado'
+        perfil.disponible = True
+        perfil.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'estado_identidad',
+                'disponible',
+            ]
+        )
+        return usuario
+
+    def crear_admin(self):
+        return User.objects.create_user(
+            username='qa_admin_documentos',
+            password='ClaveQaAdmin123!',
+            is_staff=True
+        )
+
+    def test_profesional_solo_ve_sus_propios_documentos(self):
+        usuario_ajeno = self.crear_profesional_ajeno('qa_ajeno_documentos')
+
+        propio = DocumentoVerificacion.objects.create(
+            perfil=self.profesional,
+            tipo='identidad',
+            archivo='qa_propio.pdf'
+        )
+        DocumentoVerificacion.objects.create(
+            perfil=usuario_ajeno.perfil,
+            tipo='identidad',
+            archivo='qa_ajeno.pdf'
+        )
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.get('/api/usuarios/mis-documentos/')
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        datos = respuesta.json()
+        if isinstance(datos, dict):
+            datos = datos['results']
+        self.assertEqual([doc['id'] for doc in datos], [propio.pk])
+
+    def test_cliente_no_puede_subir_documento_que_no_es_identidad(self):
+        archivo = SimpleUploadedFile(
+            'qa_experiencia.pdf',
+            b'%PDF-1.4 prueba qa',
+            content_type='application/pdf'
+        )
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.post(
+            '/api/usuarios/mis-documentos/',
+            {'tipo': 'experiencia', 'archivo': archivo},
+            format='multipart'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            DocumentoVerificacion.objects.filter(perfil=self.cliente).count(),
+            0
+        )
+
+    def test_admin_rechaza_identidad_y_se_actualiza_el_perfil(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.profesional,
+            tipo='identidad',
+            archivo='qa_identidad.pdf'
+        )
+
+        self.client.force_authenticate(user=self.crear_admin())
+        respuesta = self.client.patch(
+            f'/api/usuarios/admin/documentos/{documento.pk}/',
+            {'estado': 'rechazado'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        documento.refresh_from_db()
+        self.assertEqual(documento.estado, 'rechazado')
+
+        self.profesional.refresh_from_db()
+        self.assertEqual(self.profesional.estado_identidad, 'rechazado')
+
+    def test_cliente_y_profesional_no_pueden_aprobar_documentos(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.profesional,
+            tipo='identidad',
+            archivo='qa_identidad.pdf'
+        )
+        url_documento = f'/api/usuarios/admin/documentos/{documento.pk}/'
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        como_cliente = self.client.patch(
+            url_documento, {'estado': 'aprobado'}, format='json'
+        )
+        self.assertEqual(como_cliente.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        como_profesional = self.client.patch(
+            url_documento, {'estado': 'aprobado'}, format='json'
+        )
+        self.assertEqual(
+            como_profesional.status_code, status.HTTP_403_FORBIDDEN
+        )
+
+        documento.refresh_from_db()
+        self.assertEqual(documento.estado, 'pendiente')
+
+    def test_profesional_no_aprobado_solo_ve_su_estado_de_verificacion(self):
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(update_fields=['estado_verificacion'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.get('/api/usuarios/mi-verificacion/')
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            respuesta.json(),
+            {'estado_verificacion': 'pendiente'}
+        )
