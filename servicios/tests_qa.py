@@ -489,3 +489,18 @@ class PagosQATests(BaseQA):
 
         pago.refresh_from_db()
         self.assertEqual(pago.estado, 'pendiente')
+
+
+class NegociacionQATests(BaseQA):
+
+    def test_profesional_no_puede_aceptar_sin_propuesta_de_precio(self):
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'aceptada'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, 'pendiente')
