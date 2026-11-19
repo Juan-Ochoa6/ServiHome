@@ -863,3 +863,102 @@ class DisponibilidadQATests(BaseQA):
         self.assertTrue(activa.json()['disponible'])
         self.profesional.refresh_from_db()
         self.assertTrue(self.profesional.disponible)
+
+
+
+class PerfilQATests(BaseQA):
+
+    url_perfil = '/api/usuarios/perfil/'
+
+    def test_sin_sesion_no_puede_ver_el_perfil(self):
+        respuesta = self.client.get(self.url_perfil)
+        self.assertEqual(respuesta.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_cliente_actualiza_sus_datos_de_contacto(self):
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.patch(
+            self.url_perfil,
+            {
+                'telefono': '3001234567',
+                'direccion': 'Calle QA 123',
+                'first_name': 'Qa',
+            },
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        self.cliente.refresh_from_db()
+        self.usuario_cliente.refresh_from_db()
+        self.assertEqual(self.cliente.telefono, '3001234567')
+        self.assertEqual(self.cliente.direccion, 'Calle QA 123')
+        self.assertEqual(self.usuario_cliente.first_name, 'Qa')
+
+    def test_no_se_pueden_cambiar_rol_ni_verificacion_ni_disponibilidad(self):
+        self.client.force_authenticate(user=self.usuario_cliente)
+        original_cliente = (
+            self.cliente.rol,
+            self.cliente.estado_verificacion,
+            self.cliente.estado_identidad,
+            self.cliente.disponible,
+        )
+        como_cliente = self.client.patch(
+            self.url_perfil,
+            {
+                'rol': 'profesional',
+                'estado_verificacion': 'aprobado',
+                'estado_identidad': 'aprobado',
+                'disponible': False,
+            },
+            format='json'
+        )
+        self.assertEqual(como_cliente.status_code, status.HTTP_200_OK)
+        self.cliente.refresh_from_db()
+        self.assertEqual(
+            (
+                self.cliente.rol,
+                self.cliente.estado_verificacion,
+                self.cliente.estado_identidad,
+                self.cliente.disponible,
+            ),
+            original_cliente
+        )
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        como_profesional = self.client.patch(
+            self.url_perfil,
+            {
+                'rol': 'cliente',
+                'estado_verificacion': 'rechazado',
+                'estado_identidad': 'rechazado',
+                'disponible': False,
+            },
+            format='json'
+        )
+        self.assertEqual(como_profesional.status_code, status.HTTP_200_OK)
+        self.profesional.refresh_from_db()
+        self.assertEqual(self.profesional.rol, 'profesional')
+        self.assertEqual(self.profesional.estado_verificacion, 'aprobado')
+        self.assertEqual(self.profesional.estado_identidad, 'aprobado')
+        self.assertTrue(self.profesional.disponible)
+
+    def test_profesional_no_aprobado_no_puede_ver_su_perfil(self):
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(update_fields=['estado_verificacion'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.get(self.url_perfil)
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_correo_con_formato_invalido_da_400(self):
+        correo_original = self.usuario_cliente.email
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.patch(
+            self.url_perfil,
+            {'email': 'esto-no-es-un-correo'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.usuario_cliente.refresh_from_db()
+        self.assertEqual(self.usuario_cliente.email, correo_original)
