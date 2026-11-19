@@ -962,3 +962,164 @@ class PerfilQATests(BaseQA):
 
         self.usuario_cliente.refresh_from_db()
         self.assertEqual(self.usuario_cliente.email, correo_original)
+
+
+
+class OfertasCreacionQATests(BaseQA):
+
+    url_ofertas = '/api/mis-ofertas/'
+
+    def crear_servicio(self, nombre, activo=True):
+        return Servicio.objects.create(
+            categoria=self.categoria,
+            nombre=nombre,
+            descripcion='Servicio para pruebas QA',
+            precio_base=Decimal('50000.00'),
+            activo=activo
+        )
+
+    def cantidad_de_ofertas(self):
+        return ServicioProfesional.objects.filter(
+            profesional=self.profesional
+        ).count()
+
+    def test_oferta_con_precio_bajo_el_minimo_da_400(self):
+        otro_servicio = self.crear_servicio('Servicio QA precio bajo')
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.post(
+            self.url_ofertas,
+            {'servicio': otro_servicio.pk, 'precio': '29999'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.cantidad_de_ofertas(), 1)
+
+    def test_oferta_con_precio_exacto_del_minimo_se_acepta(self):
+        otro_servicio = self.crear_servicio('Servicio QA precio minimo')
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.post(
+            self.url_ofertas,
+            {'servicio': otro_servicio.pk, 'precio': '30000'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+
+        oferta = ServicioProfesional.objects.get(
+            profesional=self.profesional,
+            servicio=otro_servicio
+        )
+        self.assertEqual(oferta.estado_aprobacion, 'pendiente')
+
+    def test_no_se_puede_ofertar_un_servicio_inactivo(self):
+        servicio_inactivo = self.crear_servicio(
+            'Servicio QA inactivo', activo=False
+        )
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.post(
+            self.url_ofertas,
+            {'servicio': servicio_inactivo.pk, 'precio': '50000'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.cantidad_de_ofertas(), 1)
+
+    def test_no_se_puede_ofertar_dos_veces_el_mismo_servicio(self):
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.post(
+            self.url_ofertas,
+            {'servicio': self.servicio.pk, 'precio': '50000'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.cantidad_de_ofertas(), 1)
+
+    def test_profesional_no_aprobado_no_puede_crear_ofertas(self):
+        otro_servicio = self.crear_servicio('Servicio QA no aprobado')
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(update_fields=['estado_verificacion'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.post(
+            self.url_ofertas,
+            {'servicio': otro_servicio.pk, 'precio': '50000'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(self.cantidad_de_ofertas(), 1)
+
+
+class RegistroQATests(APITestCase):
+
+    url_registro = '/api/usuarios/registro/'
+
+    def setUp(self):
+        self.existente = User.objects.create_user(
+            username='qa_existente',
+            email='qa_existente@example.com',
+            password='ClaveQaExistente123!'
+        )
+
+    def datos(self, **cambios):
+        datos = {
+            'username': 'qa_nuevo',
+            'email': 'qa_nuevo@example.com',
+            'password': 'ClaveQaRegistro123!',
+            'first_name': 'Qa',
+            'last_name': 'Nuevo',
+            'rol': 'cliente',
+            'telefono': '3001234567',
+            'direccion': 'Calle QA 123',
+        }
+        datos.update(cambios)
+        return datos
+
+    def test_username_duplicado_con_otras_mayusculas_da_400(self):
+        respuesta = self.client.post(
+            self.url_registro,
+            self.datos(username='QA_EXISTENTE'),
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(
+            User.objects.filter(email='qa_nuevo@example.com').exists()
+        )
+
+    def test_correo_duplicado_con_otras_mayusculas_da_400(self):
+        respuesta = self.client.post(
+            self.url_registro,
+            self.datos(email='QA_Existente@Example.com'),
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username='qa_nuevo').exists())
+
+    def test_registro_sin_correo_da_400(self):
+        datos = self.datos()
+        datos.pop('email')
+
+        respuesta = self.client.post(
+            self.url_registro, datos, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username='qa_nuevo').exists())
+
+    def test_registro_con_contrasena_debil_da_400(self):
+        respuesta = self.client.post(
+            self.url_registro,
+            self.datos(password='12345678'),
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username='qa_nuevo').exists())
+
+    def test_registro_con_rol_inventado_da_400(self):
+        respuesta = self.client.post(
+            self.url_registro,
+            self.datos(rol='superman'),
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(username='qa_nuevo').exists())
