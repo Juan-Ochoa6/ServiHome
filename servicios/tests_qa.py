@@ -794,3 +794,72 @@ class DocumentosQATests(BaseQA):
             respuesta.json(),
             {'estado_verificacion': 'pendiente'}
         )
+
+
+
+class DisponibilidadQATests(BaseQA):
+
+    url_disponibilidad = '/api/usuarios/disponibilidad/'
+
+    def test_sin_sesion_no_puede_cambiar_disponibilidad(self):
+        respuesta = self.client.patch(
+            self.url_disponibilidad, {'disponible': False}, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_cliente_no_puede_cambiar_disponibilidad(self):
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.patch(
+            self.url_disponibilidad, {'disponible': False}, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_profesional_no_aprobado_no_puede_cambiar_disponibilidad(self):
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(update_fields=['estado_verificacion'])
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            self.url_disponibilidad, {'disponible': False}, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+        self.profesional.refresh_from_db()
+        self.assertTrue(self.profesional.disponible)
+
+    def test_valor_que_no_es_true_o_false_da_400(self):
+        self.client.force_authenticate(user=self.usuario_profesional)
+
+        con_texto = self.client.patch(
+            self.url_disponibilidad, {'disponible': 'si'}, format='json'
+        )
+        self.assertEqual(con_texto.status_code, status.HTTP_400_BAD_REQUEST)
+
+        con_cuerpo_vacio = self.client.patch(
+            self.url_disponibilidad, {}, format='json'
+        )
+        self.assertEqual(
+            con_cuerpo_vacio.status_code, status.HTTP_400_BAD_REQUEST
+        )
+
+        self.profesional.refresh_from_db()
+        self.assertTrue(self.profesional.disponible)
+
+    def test_profesional_aprobado_pausa_y_reactiva_su_disponibilidad(self):
+        self.client.force_authenticate(user=self.usuario_profesional)
+
+        pausa = self.client.patch(
+            self.url_disponibilidad, {'disponible': False}, format='json'
+        )
+        self.assertEqual(pausa.status_code, status.HTTP_200_OK)
+        self.assertFalse(pausa.json()['disponible'])
+        self.profesional.refresh_from_db()
+        self.assertFalse(self.profesional.disponible)
+
+        activa = self.client.patch(
+            self.url_disponibilidad, {'disponible': True}, format='json'
+        )
+        self.assertEqual(activa.status_code, status.HTTP_200_OK)
+        self.assertTrue(activa.json()['disponible'])
+        self.profesional.refresh_from_db()
+        self.assertTrue(self.profesional.disponible)
