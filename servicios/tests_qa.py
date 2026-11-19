@@ -504,3 +504,72 @@ class NegociacionQATests(BaseQA):
 
         self.solicitud.refresh_from_db()
         self.assertEqual(self.solicitud.estado, 'pendiente')
+
+
+
+class OfertasQATests(BaseQA):
+
+    def test_cliente_no_puede_gestionar_ofertas(self):
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.get('/api/mis-ofertas/')
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_editar_precio_de_oferta_aprobada_la_devuelve_a_pendiente(self):
+        oferta = ServicioProfesional.objects.get(
+            profesional=self.profesional,
+            servicio=self.servicio
+        )
+        self.assertEqual(oferta.estado_aprobacion, 'aprobado')
+
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.patch(
+            f'/api/mis-ofertas/{oferta.pk}/',
+            {'precio': '60000'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        oferta.refresh_from_db()
+        self.assertEqual(oferta.precio, Decimal('60000.00'))
+        self.assertEqual(oferta.estado_aprobacion, 'pendiente')
+
+    def test_profesional_no_puede_ver_ni_tocar_oferta_de_otro(self):
+        usuario_ajeno = User.objects.create_user(
+            username='qa_ajeno_oferta',
+            password='ClaveQaAjeno123!'
+        )
+        perfil_ajeno = usuario_ajeno.perfil
+        perfil_ajeno.rol = 'profesional'
+        perfil_ajeno.estado_verificacion = 'aprobado'
+        perfil_ajeno.estado_identidad = 'aprobado'
+        perfil_ajeno.disponible = True
+        perfil_ajeno.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'estado_identidad',
+                'disponible',
+            ]
+        )
+
+        oferta = ServicioProfesional.objects.get(
+            profesional=self.profesional,
+            servicio=self.servicio
+        )
+        url_oferta = f'/api/mis-ofertas/{oferta.pk}/'
+
+        self.client.force_authenticate(user=usuario_ajeno)
+        ver = self.client.get(url_oferta)
+        self.assertEqual(ver.status_code, status.HTTP_404_NOT_FOUND)
+
+        editar = self.client.patch(
+            url_oferta, {'precio': '70000'}, format='json'
+        )
+        self.assertEqual(editar.status_code, status.HTTP_404_NOT_FOUND)
+
+        borrar = self.client.delete(url_oferta)
+        self.assertEqual(borrar.status_code, status.HTTP_404_NOT_FOUND)
+
+        oferta.refresh_from_db()
+        self.assertEqual(oferta.precio, Decimal('50000.00'))
+        self.assertEqual(oferta.estado_aprobacion, 'aprobado')
