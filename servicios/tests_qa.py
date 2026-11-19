@@ -573,3 +573,89 @@ class OfertasQATests(BaseQA):
         oferta.refresh_from_db()
         self.assertEqual(oferta.precio, Decimal('50000.00'))
         self.assertEqual(oferta.estado_aprobacion, 'aprobado')
+
+
+
+from servicios.models import TrabajoPortafolio
+
+
+class PortafolioQATests(BaseQA):
+
+    def crear_trabajo(self, titulo, activo=True):
+        return TrabajoPortafolio.objects.create(
+            profesional=self.profesional,
+            titulo=titulo,
+            descripcion='Trabajo para pruebas QA',
+            imagen='portafolio_profesionales/qa.jpg',
+            activo=activo
+        )
+
+    def lista_de_resultados(self, respuesta):
+        datos = respuesta.json()
+        if isinstance(datos, dict):
+            return datos['results']
+        return datos
+
+    def test_cliente_no_puede_gestionar_portafolio(self):
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.get('/api/mi-portafolio/')
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_portafolio_publico_sin_sesion_solo_muestra_activos(self):
+        self.crear_trabajo('Trabajo visible', activo=True)
+        self.crear_trabajo('Trabajo oculto', activo=False)
+
+        respuesta = self.client.get(
+            f'/api/profesionales/{self.profesional.pk}/portafolio/'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        titulos = [
+            trabajo['titulo']
+            for trabajo in self.lista_de_resultados(respuesta)
+        ]
+        self.assertEqual(titulos, ['Trabajo visible'])
+
+    def test_portafolio_publico_vacio_si_profesional_no_esta_aprobado(self):
+        self.crear_trabajo('Trabajo de profesional no aprobado')
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(update_fields=['estado_verificacion'])
+
+        respuesta = self.client.get(
+            f'/api/profesionales/{self.profesional.pk}/portafolio/'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.lista_de_resultados(respuesta), [])
+
+    def test_profesional_no_puede_ver_ni_borrar_trabajo_de_otro(self):
+        usuario_ajeno = User.objects.create_user(
+            username='qa_ajeno_portafolio',
+            password='ClaveQaAjeno123!'
+        )
+        perfil_ajeno = usuario_ajeno.perfil
+        perfil_ajeno.rol = 'profesional'
+        perfil_ajeno.estado_verificacion = 'aprobado'
+        perfil_ajeno.estado_identidad = 'aprobado'
+        perfil_ajeno.disponible = True
+        perfil_ajeno.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'estado_identidad',
+                'disponible',
+            ]
+        )
+
+        trabajo = self.crear_trabajo('Trabajo ajeno')
+        url_trabajo = f'/api/mi-portafolio/{trabajo.pk}/'
+
+        self.client.force_authenticate(user=usuario_ajeno)
+        ver = self.client.get(url_trabajo)
+        self.assertEqual(ver.status_code, status.HTTP_404_NOT_FOUND)
+
+        borrar = self.client.delete(url_trabajo)
+        self.assertEqual(borrar.status_code, status.HTTP_404_NOT_FOUND)
+
+        self.assertTrue(
+            TrabajoPortafolio.objects.filter(pk=trabajo.pk).exists()
+        )
