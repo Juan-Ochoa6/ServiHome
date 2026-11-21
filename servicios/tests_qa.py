@@ -1123,3 +1123,115 @@ class RegistroQATests(APITestCase):
         )
         self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(User.objects.filter(username='qa_nuevo').exists())
+
+
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+
+
+class ResenasVisiblesQATests(BaseQA):
+
+    def crear_resena(self, calificacion=4):
+        self.solicitud.estado = 'completada'
+        self.solicitud.save(update_fields=['estado'])
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        respuesta = self.client.post(
+            f'/api/solicitudes/{self.solicitud.pk}/resena/',
+            {'calificacion': calificacion, 'comentario': 'Comentario QA'},
+            format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+        self.client.force_authenticate(user=None)
+
+    def test_resenas_publicas_se_ven_sin_sesion(self):
+        self.crear_resena(calificacion=5)
+
+        respuesta = self.client.get(
+            f'/api/profesionales/{self.profesional.pk}/resenas/'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        datos = respuesta.json()
+        if isinstance(datos, dict):
+            datos = datos['results']
+        self.assertEqual(len(datos), 1)
+        self.assertEqual(datos[0]['calificacion'], 5)
+        self.assertEqual(datos[0]['cliente_nombre'], 'qa_cliente')
+        self.assertEqual(datos[0]['profesional_nombre'], 'qa_profesional')
+
+    def test_resenas_de_profesional_inexistente_da_404(self):
+        respuesta = self.client.get('/api/profesionales/999999/resenas/')
+        self.assertEqual(respuesta.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_resenas_del_id_de_un_cliente_da_404(self):
+        respuesta = self.client.get(
+            f'/api/profesionales/{self.cliente.pk}/resenas/'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reputacion_calcula_promedio_y_total(self):
+        self.crear_resena(calificacion=4)
+
+        respuesta = self.client.get(
+            f'/api/profesionales/{self.profesional.pk}/reputacion/'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        datos = respuesta.json()
+        self.assertEqual(float(datos['promedio_calificacion']), 4.0)
+        self.assertEqual(datos['total_resenas'], 1)
+
+    def test_reputacion_del_id_de_un_cliente_da_404(self):
+        respuesta = self.client.get(
+            f'/api/profesionales/{self.cliente.pk}/reputacion/'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class RenovacionTokensQATests(BaseQA):
+
+    url_refresh = '/api/usuarios/token/refresh/'
+
+    def test_refresh_falso_da_401(self):
+        respuesta = self.client.post(
+            self.url_refresh, {'refresh': 'token-falso'}, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_refresh_vacio_da_400(self):
+        respuesta = self.client.post(self.url_refresh, {}, format='json')
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_access_usado_como_refresh_da_401(self):
+        access = str(
+            RefreshToken.for_user(self.usuario_cliente).access_token
+        )
+        respuesta = self.client.post(
+            self.url_refresh, {'refresh': access}, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_refresh_valido_entrega_access_y_no_rota(self):
+        refresh = str(RefreshToken.for_user(self.usuario_cliente))
+        respuesta = self.client.post(
+            self.url_refresh, {'refresh': refresh}, format='json'
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        datos = respuesta.json()
+        self.assertIn('access', datos)
+        self.assertNotIn('refresh', datos)
+
+    def test_access_vencido_da_401_y_uno_valido_da_200(self):
+        valido = AccessToken.for_user(self.usuario_cliente)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {valido}')
+        con_token_valido = self.client.get('/api/usuarios/perfil/')
+        self.assertEqual(con_token_valido.status_code, status.HTTP_200_OK)
+
+        vencido = AccessToken.for_user(self.usuario_cliente)
+        vencido.set_exp(from_time=timezone.now() - timedelta(hours=1))
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {vencido}')
+        con_token_vencido = self.client.get('/api/usuarios/perfil/')
+        self.assertEqual(
+            con_token_vencido.status_code, status.HTTP_401_UNAUTHORIZED
+        )
