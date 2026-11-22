@@ -6,6 +6,7 @@ import { CLASE_ESTADO_PAGO, ETIQUETAS_PAGO, METODOS_PAGO } from '../utils/etique
 import BotonArchivo from './BotonArchivo.jsx';
 import EstadoCarga from './EstadoCarga.jsx';
 import Mensaje from './Mensaje.jsx';
+import { useConfirmacion } from '../context/useConfirmacion.js';
 
 const FILTROS = [
   ['pendiente', 'Pendientes'],
@@ -17,6 +18,7 @@ const FILTROS = [
 
 function PanelPagos() {
   const pagos = useCargar(listarPagosAdmin);
+  const confirmar = useConfirmacion();
 
   const [filtro, setFiltro] = useState('pendiente');
   const [procesando, setProcesando] = useState(null);
@@ -28,7 +30,25 @@ function PanelPagos() {
     .sort((a, b) => new Date(b.fecha_creacion) - new Date(a.fecha_creacion));
 
   async function cambiar(pago, estado, confirmacion, mensaje) {
-    if (!window.confirm(confirmacion)) return;
+    const aceptado = await confirmar({
+      titulo:
+        estado === 'pagado'
+          ? '¿Confirmar pago?'
+          : estado === 'fallido'
+            ? '¿Marcar pago como fallido?'
+            : '¿Reembolsar pago?',
+      mensaje: confirmacion,
+      textoConfirmar:
+        estado === 'pagado'
+          ? 'Sí, confirmar'
+          : estado === 'fallido'
+            ? 'Sí, marcar'
+            : 'Sí, reembolsar',
+      textoCancelar: 'Volver',
+      tipo: estado === 'pagado' ? 'info' : 'peligro',
+    });
+
+    if (!aceptado) return;
 
     setErrorAccion('');
     setExito('');

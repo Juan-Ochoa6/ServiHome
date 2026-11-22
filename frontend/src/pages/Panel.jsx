@@ -21,6 +21,7 @@ import PanelIncidentes from '../components/PanelIncidentes.jsx';
 import PanelPagos from '../components/PanelPagos.jsx';
 import Mensaje from '../components/Mensaje.jsx';
 import BotonDocumento from '../components/BotonDocumento.jsx';
+import { useConfirmacion } from '../context/useConfirmacion.js';
 
 function TarjetaDocumento({ documento, ocupado, onResolver }) {
   const [observacion, setObservacion] = useState(documento.observacion ?? '');
@@ -85,6 +86,7 @@ function TarjetaDocumento({ documento, ocupado, onResolver }) {
 
 function Panel() {
   const [parametros] = useSearchParams();
+  const confirmar = useConfirmacion();
   const pestanaInicial = parametros.get('pestana');
   const [pestana, setPestana] = useState(
     ['documentos', 'profesionales', 'ofertas', 'pagos', 'incidentes', 'finanzas'].includes(
@@ -108,7 +110,17 @@ function Panel() {
   const [exito, setExito] = useState('');
 
   async function ejecutar(clave, accion, confirmacion, mensajeExito) {
-    if (!window.confirm(confirmacion)) return;
+    const esRechazo = confirmacion.startsWith('¿Rechazar');
+
+    const aceptado = await confirmar({
+      titulo: esRechazo ? '¿Rechazar solicitud?' : '¿Aprobar solicitud?',
+      mensaje: confirmacion,
+      textoConfirmar: esRechazo ? 'Sí, rechazar' : 'Sí, aprobar',
+      textoCancelar: 'Volver',
+      tipo: esRechazo ? 'peligro' : 'info',
+    });
+
+    if (!aceptado) return;
 
     setErrorAccion('');
     setExito('');
@@ -117,6 +129,7 @@ function Panel() {
     try {
       const respuesta = await accion();
       setExito(respuesta?.mensaje ?? mensajeExito ?? 'Cambio realizado.');
+
       // Un cambio en una pestaña puede afectar a las otras.
       profesionales.recargar();
       ofertas.recargar();

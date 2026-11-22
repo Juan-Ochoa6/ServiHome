@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 const CLAVE_CONSENTIMIENTO = 'servihome-consentimiento-cookies';
 
@@ -9,35 +9,47 @@ const preferenciasIniciales = {
 };
 
 function ConsentimientoCookies() {
-  const [visible, setVisible] = useState(false);
-  const [configurando, setConfigurando] = useState(false);
-  const [preferencias, setPreferencias] = useState(preferenciasIniciales);
-
-  // Consultar si el usuario ya eligió sus preferencias.
-  useEffect(() => {
+  const [preferencias, setPreferencias] = useState(() => {
     try {
       const guardado = localStorage.getItem(CLAVE_CONSENTIMIENTO);
 
-      if (!guardado) {
-        setVisible(true);
-        return;
+      if (guardado) {
+        const datos = JSON.parse(guardado);
+
+        if (
+          typeof datos.necesarias === 'boolean' &&
+          typeof datos.analiticas === 'boolean' &&
+          datos.necesarias === true
+        ) {
+          return datos;
+        }
       }
+    } catch {
+      console.warn('No fue posible leer las preferencias de cookies.');
+    }
+
+    return preferenciasIniciales;
+  });
+
+  const [visible, setVisible] = useState(() => {
+    try {
+      const guardado = localStorage.getItem(CLAVE_CONSENTIMIENTO);
+
+      if (!guardado) return true;
 
       const datos = JSON.parse(guardado);
 
-      if (
+      return !(
         typeof datos.necesarias === 'boolean' &&
         typeof datos.analiticas === 'boolean' &&
         datos.necesarias === true
-      ) {
-        setPreferencias(datos);
-      } else {
-        setVisible(true);
-      }
+      );
     } catch {
-      setVisible(true);
+      return true;
     }
-  }, []);
+  });
+
+  const [configurando, setConfigurando] = useState(false);
 
   // Guardar la decisión del usuario.
   function guardarPreferencias(nuevasPreferencias) {

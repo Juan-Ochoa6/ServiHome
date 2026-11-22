@@ -16,6 +16,7 @@ import NegociacionPrecio from '../components/NegociacionPrecio.jsx';
 import PagoSolicitud from '../components/PagoSolicitud.jsx';
 import ReporteIncidente from '../components/ReporteIncidente.jsx';
 import ResenaSolicitud from '../components/ResenaSolicitud.jsx';
+import { useConfirmacion } from '../context/useConfirmacion.js';
 
 const ESTADOS_CANCELABLES = ['pendiente', 'aceptada'];
 const ESTADOS_CON_INCIDENTE = ['aceptada', 'en_proceso', 'completada'];
@@ -31,6 +32,7 @@ function precioDeReferencia(ofertas, solicitud) {
 
 function Solicitudes() {
   const { sesion } = useAuth();
+  const confirmar = useConfirmacion();
   const esCliente = sesion?.rol === 'cliente';
 
   const { datos, cargando, error, recargar } = useCargar(listarSolicitudes);
@@ -51,8 +53,22 @@ function Solicitudes() {
     pagoPorSolicitud[pago.solicitud] = pago;
   }
 
-  async function cambiarEstado(solicitud, estado, confirmacion) {
-    if (!window.confirm(confirmacion)) return;
+  async function cambiarEstado(solicitud, estado, mensaje) {
+    const esCancelacion = estado === 'cancelada';
+
+    const aceptado = await confirmar({
+      titulo: esCancelacion
+        ? 'Cancelar solicitud'
+        : '¿Rechazar solicitud?',
+      mensaje,
+      textoConfirmar: esCancelacion
+        ? 'Sí, cancelar'
+        : 'Sí, rechazar',
+      textoCancelar: 'Volver',
+      tipo: 'peligro',
+    });
+
+    if (!aceptado) return;
 
     setErrorAccion('');
     setProcesando(solicitud.id);

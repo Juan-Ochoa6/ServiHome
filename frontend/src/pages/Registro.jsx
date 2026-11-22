@@ -22,6 +22,9 @@ function Registro() {
   const [cargando, setCargando] = useState(false);
   const [rolRegistrado, setRolRegistrado] = useState(null);
   const [aceptaTerminos, setAceptaTerminos] = useState(false);
+  const longitudValida = datos.password.length >= 8;
+  const noEsSoloNumerica =
+    datos.password.length > 0 && !/^\d+$/.test(datos.password);
 
   function actualizar(evento) {
     const { name, value } = evento.target;
@@ -148,6 +151,25 @@ function Registro() {
               onChange={actualizar}
               required
             />
+
+            <div className="ayuda-contrasena" aria-live="polite">
+              <p>Tu contraseña debe cumplir estos requisitos:</p>
+
+              <ul>
+                <li className={longitudValida ? 'requisito-cumplido' : 'requisito-pendiente'}>
+                  {longitudValida ? '✓' : '○'} Al menos 8 caracteres.
+                </li>
+
+                <li className={noEsSoloNumerica ? 'requisito-cumplido' : 'requisito-pendiente'}>
+                  {noEsSoloNumerica ? '✓' : '○'} No puede contener únicamente números.
+                </li>
+              </ul>
+
+              <p>
+                También evitaremos contraseñas comunes o demasiado parecidas a tus datos personales.
+                Estas condiciones se verifican al crear la cuenta.
+              </p>
+            </div>
           </Campo>
 
           <Campo id="telefono" etiqueta="Teléfono (opcional)" error={mensajeCampo('telefono')}>

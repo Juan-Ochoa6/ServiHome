@@ -8,8 +8,10 @@ import { useCargar } from '../hooks/useCargar.js';
 import { formatearFecha, formatearPrecio } from '../utils/formato.js';
 import EstadoCarga from './EstadoCarga.jsx';
 import Mensaje from './Mensaje.jsx';
+import { useConfirmacion } from '../context/useConfirmacion.js';
 
 function NegociacionPrecio({ solicitud, miPerfilId, otraParte, precioReferencia, onCambio }) {
+    const confirmar = useConfirmacion();
     const cargarPropuestas = useCallback(
         () => listarPropuestas(solicitud.id),
         [solicitud.id],
@@ -47,15 +49,36 @@ function NegociacionPrecio({ solicitud, miPerfilId, otraParte, precioReferencia,
         ejecutar(() => crearPropuesta(solicitud.id, precio.trim()));
     }
 
-    function aceptar() {
-        const texto = `¿Aceptar el precio de ${formatearPrecio(pendiente.precio)}? La solicitud quedará aceptada.`;
-        if (!window.confirm(texto)) return;
-        ejecutar(() => responderPropuesta(solicitud.id, pendiente.id, 'aceptar'));
+    async function aceptar() {
+        const aceptado = await confirmar({
+            titulo: '¿Aceptar propuesta de precio?',
+            mensaje: `¿Aceptar el precio de ${formatearPrecio(pendiente.precio)}? La solicitud quedará aceptada.`,
+            textoConfirmar: 'Sí, aceptar',
+            textoCancelar: 'Volver',
+            tipo: 'info',
+        });
+
+        if (!aceptado) return;
+
+        ejecutar(() =>
+            responderPropuesta(solicitud.id, pendiente.id, 'aceptar')
+        );
     }
 
-    function rechazar() {
-        if (!window.confirm('¿Rechazar esta propuesta de precio?')) return;
-        ejecutar(() => responderPropuesta(solicitud.id, pendiente.id, 'rechazar'));
+    async function rechazar() {
+        const aceptado = await confirmar({
+            titulo: '¿Rechazar propuesta?',
+            mensaje: 'La propuesta de precio será rechazada. Podrás enviar una contraoferta si lo deseas.',
+            textoConfirmar: 'Sí, rechazar',
+            textoCancelar: 'Volver',
+            tipo: 'peligro',
+        });
+
+        if (!aceptado) return;
+
+        ejecutar(() =>
+            responderPropuesta(solicitud.id, pendiente.id, 'rechazar')
+        );
     }
 
     return (

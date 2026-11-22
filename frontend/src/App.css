@@ -247,6 +247,44 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 .campo-formulario select:focus { outline: none; border-color: #39845a; box-shadow: 0 0 0 3px #39845a20; }
 .error-campo { color: #b3261e; font-size: .84rem; }
 
+/* ===== Requisitos de contraseña ===== */
+.ayuda-contrasena {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 5px;
+  color: #65736b;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+
+.ayuda-contrasena p {
+  margin: 0;
+}
+
+.ayuda-contrasena ul {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ayuda-contrasena li {
+  transition: color .2s ease;
+}
+
+.ayuda-contrasena .requisito-pendiente {
+  color: #78847d;
+}
+
+.ayuda-contrasena .requisito-cumplido {
+  color: #23784f;
+  font-weight: 650;
+}
+
+
 .mensaje { margin: 0; padding: 12px 14px; border-radius: 10px; font-size: .9rem; line-height: 1.5; }
 .mensaje-error { background: #fdecea; color: #8c1d18; }
 .mensaje-exito { background: #e3f4e7; color: #1f6b43; }
@@ -849,5 +887,135 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 
   .legal-contenido p {
     font-size: 14px;
+  }
+}
+/* ==============================
+   DIÁLOGO DE CONFIRMACIÓN
+================================ */
+
+.confirmacion-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(20, 35, 27, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.confirmacion-dialogo {
+  width: 100%;
+  max-width: 440px;
+  padding: 30px;
+  border: 1px solid #e2eae4;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  text-align: center;
+  animation: aparecerConfirmacion 0.2s ease-out;
+}
+
+.confirmacion-icono {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #e8f5ed;
+  color: #23865b;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.confirmacion-dialogo.tipo-peligro .confirmacion-icono {
+  background: #fff0ed;
+  color: #d64545;
+}
+
+.confirmacion-dialogo h2 {
+  margin: 0 0 12px;
+  color: #20332c;
+  font-size: 22px;
+}
+
+.confirmacion-dialogo p {
+  margin: 0;
+  color: #64746b;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.confirmacion-acciones {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.confirmacion-boton {
+  min-width: 120px;
+  padding: 11px 18px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.confirmacion-boton:hover {
+  transform: translateY(-1px);
+}
+
+.confirmacion-boton.cancelar {
+  background: #f0f3f1;
+  color: #405047;
+}
+
+.confirmacion-boton.cancelar:hover {
+  background: #e3e9e5;
+}
+
+.confirmacion-boton.aceptar {
+  background: #23865b;
+  color: white;
+}
+
+.confirmacion-boton.aceptar:hover {
+  background: #176b45;
+}
+
+.tipo-peligro .confirmacion-boton.aceptar {
+  background: #d64545;
+}
+
+.tipo-peligro .confirmacion-boton.aceptar:hover {
+  background: #b83232;
+}
+
+@keyframes aparecerConfirmacion {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 480px) {
+  .confirmacion-dialogo {
+    padding: 24px 20px;
+  }
+
+  .confirmacion-acciones {
+    flex-direction: column-reverse;
+  }
+
+  .confirmacion-boton {
+    width: 100%;
   }
 }
