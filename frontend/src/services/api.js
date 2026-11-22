@@ -57,28 +57,53 @@ function traducir(texto) {
   return TRADUCCIONES[texto] ?? texto;
 }
 
+
 function mensajeDeError(status, datos) {
+  // Errores de conexión: no hay respuesta del servidor.
+  if (status === 0) {
+    return 'No se pudo conectar con el servidor. Revisa tu conexión o que el backend esté encendido.';
+  }
+
+  // Errores conocidos: mostramos mensajes seguros y claros.
+  if (status === 401) {
+    return 'Tu sesión expiró o no estás autenticado. Inicia sesión de nuevo.';
+  }
+
+  if (status === 403) {
+    return 'No tienes permiso para realizar esta acción.';
+  }
+
+  if (status === 404) {
+    return 'No encontramos lo que buscas.';
+  }
+
+  if (status === 429) {
+    return 'Hiciste demasiados intentos seguidos. Espera un momento e inténtalo de nuevo.';
+  }
+
+  // No exponemos detalles internos del servidor.
+  if (status >= 500) {
+    return 'El servidor tuvo un problema. Inténtalo de nuevo en unos minutos.';
+  }
+
+  // Conservamos los mensajes útiles de validación del backend.
   if (datos && typeof datos === 'object') {
     if (typeof datos.error === 'string') return traducir(datos.error);
     if (typeof datos.detail === 'string') return traducir(datos.detail);
 
     const primero = Object.values(datos)[0];
     const texto = Array.isArray(primero) ? primero[0] : primero;
+
     if (typeof texto === 'string') return traducir(texto);
   }
 
-  if (status === 0) {
-    return 'No se pudo conectar con el servidor. Revisa tu conexión o que el backend esté encendido.';
+  if (status === 400) {
+    return 'No se pudieron procesar los datos. Revisa la información ingresada.';
   }
-  if (status === 401) return 'Tu sesión expiró o no estás autenticado. Inicia sesión de nuevo.';
-  if (status === 403) return 'No tienes permiso para realizar esta acción.';
-  if (status === 404) return 'No encontramos lo que buscas.';
-  if (status === 429) {
-    return 'Hiciste demasiados intentos seguidos. Espera un momento e inténtalo de nuevo.';
-  }
-  if (status >= 500) return 'El servidor tuvo un problema. Inténtalo de nuevo en unos minutos.';
+
   return 'Ocurrió un error inesperado.';
 }
+
 
 // ---------- Peticiones ----------
 

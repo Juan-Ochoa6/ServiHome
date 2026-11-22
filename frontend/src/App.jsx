@@ -16,6 +16,9 @@ import MiCuenta from './pages/MiCuenta.jsx';
 import Panel from './pages/Panel.jsx';
 import Login from './pages/Login.jsx';
 import Registro from './pages/Registro.jsx';
+import ConsentimientoCookies from './components/ConsentimientoCookies';
+import PoliticaCookies from './pages/PoliticaCookies';
+import Terminos from './pages/Terminos';
 
 // El catálogo es para visitantes, clientes y administradores; los profesionales
 // vuelven a su inicio.
@@ -99,6 +102,11 @@ function App() {
             }
           />
           <Route
+            path="/politica-cookies"
+            element={<PoliticaCookies />}
+          />
+          <Route path="/terminos" element={<Terminos />} />
+          <Route
             path="*"
             element={
               <section className="seccion">
@@ -113,8 +121,8 @@ function App() {
           />
         </Routes>
       </main>
-
       <Footer />
+      <ConsentimientoCookies />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { useCargar } from '../hooks/useCargar.js';
 import Campo from '../components/Campo.jsx';
 import EstadoCarga from '../components/EstadoCarga.jsx';
 import Mensaje from '../components/Mensaje.jsx';
+import { useConfirmacion } from '../context/useConfirmacion.js';
 
 const MAX_MB = 5;
 const MAX_BYTES = MAX_MB * 1024 * 1024;
@@ -172,6 +173,7 @@ const TRABAJO_VACIO = { titulo: '', descripcion: '', servicio: '', activo: true 
 function MiPortafolio() {
   const trabajos = useCargar(listarMiPortafolio);
   const servicios = useCargar(listarServicios);
+  const confirmar = useConfirmacion();
 
   const [editando, setEditando] = useState(null);
   const [claveFormulario, setClaveFormulario] = useState(0);
@@ -196,7 +198,15 @@ function MiPortafolio() {
   }
 
   async function eliminar(trabajo) {
-    if (!window.confirm(`¿Eliminar "${trabajo.titulo}" de tu portafolio?`)) return;
+    const aceptado = await confirmar({
+      titulo: '¿Eliminar trabajo?',
+      mensaje: `¿Estás seguro de que deseas eliminar "${trabajo.titulo}" de tu portafolio? Esta acción no se puede deshacer.`,
+      textoConfirmar: 'Sí, eliminar',
+      textoCancelar: 'Volver',
+      tipo: 'peligro',
+    });
+
+    if (!aceptado) return;
 
     setExito('');
     setErrorAccion('');

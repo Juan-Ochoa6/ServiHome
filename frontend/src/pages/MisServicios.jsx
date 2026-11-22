@@ -12,6 +12,7 @@ import { formatearPrecio } from '../utils/formato.js';
 import Campo from '../components/Campo.jsx';
 import EstadoCarga from '../components/EstadoCarga.jsx';
 import Mensaje from '../components/Mensaje.jsx';
+import { useConfirmacion } from '../context/useConfirmacion.js';
 
 const ETIQUETAS_APROBACION = {
   pendiente: 'Pendiente de aprobación',
@@ -26,6 +27,7 @@ function primerMensaje(valor) {
 function MisServicios() {
   const ofertas = useCargar(listarMisOfertas);
   const servicios = useCargar(listarServicios);
+  const confirmar = useConfirmacion();
 
   const [nuevo, setNuevo] = useState({ servicio: '', precio: '' });
   const [erroresNuevo, setErroresNuevo] = useState({});
@@ -81,9 +83,16 @@ function MisServicios() {
 
   async function guardarPrecio(oferta) {
     if (oferta.estado_aprobacion === 'aprobado') {
-      const aviso =
-        'Al cambiar el precio, tu oferta volverá a revisión y dejará de verse en el catálogo hasta que la aprueben. ¿Continuar?';
-      if (!window.confirm(aviso)) return;
+      const aceptado = await confirmar({
+        titulo: '¿Cambiar el precio?',
+        mensaje:
+          'Al cambiar el precio, tu oferta volverá a revisión y dejará de verse en el catálogo hasta que un administrador la apruebe.',
+        textoConfirmar: 'Sí, continuar',
+        textoCancelar: 'Volver',
+        tipo: 'info',
+      });
+
+      if (!aceptado) return;
     }
 
     limpiarMensajes();
@@ -102,7 +111,15 @@ function MisServicios() {
   }
 
   async function eliminar(oferta) {
-    if (!window.confirm(`¿Eliminar tu oferta "${oferta.servicio_nombre}"?`)) return;
+    const aceptado = await confirmar({
+      titulo: '¿Eliminar oferta?',
+      mensaje: `¿Estás seguro de que deseas eliminar tu oferta "${oferta.servicio_nombre}"? Esta acción no se puede deshacer.`,
+      textoConfirmar: 'Sí, eliminar',
+      textoCancelar: 'Volver',
+      tipo: 'peligro',
+    });
+
+    if (!aceptado) return;
 
     limpiarMensajes();
     setOcupado(true);
