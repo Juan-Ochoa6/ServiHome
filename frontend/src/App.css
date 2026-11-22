@@ -567,3 +567,287 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 .tabla-finanzas th { background: #f8fbf8; color: #24392b; font-weight: 700; }
 .tabla-finanzas tbody tr:last-child td { border-bottom: 0; }
 .barra-ganancia { display: block; min-width: 4px; height: 8px; margin: 6px 0 0 auto; border-radius: 4px; background: #23865b; }
+
+/* ========================================
+   AVISO DE CONSENTIMIENTO DE COOKIES
+======================================== */
+
+.cookies-contenedor {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  width: min(560px, calc(100% - 40px));
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e2eae5;
+  border-radius: 16px;
+  box-shadow: 0 8px 35px rgba(25, 55, 40, 0.18);
+}
+
+.cookies-contenido {
+  padding: 24px;
+}
+
+.cookies-texto {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cookies-icono {
+  font-size: 30px;
+}
+
+.cookies-texto h2 {
+  margin: 0 0 10px;
+  color: #20332c;
+  font-size: 20px;
+}
+
+.cookies-texto p {
+  margin: 0 0 10px;
+  color: #596b61;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.cookies-texto a {
+  color: #23865b;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cookies-texto a:hover {
+  text-decoration: underline;
+}
+
+.cookies-preferencias {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5ece7;
+}
+
+.cookies-preferencias h3 {
+  margin: 0 0 14px;
+  color: #20332c;
+  font-size: 16px;
+}
+
+.cookies-opcion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #edf1ee;
+}
+
+.cookies-opcion strong {
+  color: #20332c;
+  font-size: 14px;
+}
+
+.cookies-opcion p {
+  margin: 5px 0 0;
+  color: #697970;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cookies-opcion input {
+  width: 18px;
+  height: 18px;
+  accent-color: #23865b;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cookies-opcion input:disabled {
+  cursor: not-allowed;
+}
+
+.cookies-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.cookies-boton {
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.cookies-boton:hover {
+  transform: translateY(-1px);
+}
+
+.cookies-rechazar {
+  color: #405349;
+  background: #f1f5f2;
+  border-color: #dce6df;
+}
+
+.cookies-rechazar:hover {
+  background: #e5ede7;
+}
+
+.cookies-configurar {
+  color: #23865b;
+  background: #ffffff;
+  border-color: #23865b;
+}
+
+.cookies-configurar:hover {
+  background: #f0f8f3;
+}
+
+.cookies-aceptar {
+  color: #ffffff;
+  background: #23865b;
+}
+
+.cookies-aceptar:hover {
+  background: #1b704a;
+}
+
+@media (max-width: 600px) {
+  .cookies-contenedor {
+    bottom: 10px;
+    left: 10px;
+    width: calc(100% - 20px);
+  }
+
+  .cookies-contenido {
+    padding: 18px;
+  }
+
+  .cookies-acciones {
+    flex-direction: column;
+  }
+
+  .cookies-boton {
+    width: 100%;
+  }
+}
+
+/* ========================================
+   PAGINAS LEGALES - SERVIHOME
+======================================== */
+
+.pagina-legal {
+  width: 100%;
+  min-height: 70vh;
+  padding: 55px 20px 70px;
+  background: #f8faf8;
+}
+
+.legal-contenido {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 45px 55px;
+  background: #ffffff;
+  border: 1px solid #e7eee9;
+  border-radius: 18px;
+  box-shadow: 0 8px 30px rgba(32, 51, 44, 0.06);
+}
+
+.legal-etiqueta {
+  display: inline-block;
+  margin-bottom: 14px;
+  padding: 7px 13px;
+  color: #23865b;
+  background: #eaf5ee;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.legal-contenido h1 {
+  margin: 0 0 12px;
+  color: #20332c;
+  font-size: clamp(30px, 5vw, 40px);
+  line-height: 1.2;
+}
+
+.legal-actualizacion {
+  margin-bottom: 30px;
+  color: #849188;
+  font-size: 13px;
+}
+
+.legal-contenido h2 {
+  margin: 32px 0 12px;
+  color: #23865b;
+  font-size: 21px;
+  line-height: 1.4;
+}
+
+.legal-contenido h3 {
+  margin: 20px 0 8px;
+  color: #20332c;
+  font-size: 16px;
+}
+
+.legal-contenido p {
+  margin: 0 0 14px;
+  color: #596b61;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.legal-volver {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid #e7eee9;
+}
+
+.legal-volver a {
+  display: inline-flex;
+  align-items: center;
+  color: #23865b;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.legal-volver a:hover {
+  color: #1b704a;
+  text-decoration: underline;
+}
+
+/* Adaptación para celulares */
+@media (max-width: 600px) {
+  .pagina-legal {
+    padding: 25px 12px 40px;
+  }
+
+  .legal-contenido {
+    padding: 28px 20px;
+    border-radius: 12px;
+  }
+
+  .legal-contenido h1 {
+    font-size: 29px;
+  }
+
+  .legal-contenido h2 {
+    font-size: 19px;
+  }
+
+  .legal-contenido p {
+    font-size: 14px;
+  }
+}

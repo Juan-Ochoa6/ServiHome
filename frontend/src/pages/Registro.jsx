@@ -21,6 +21,7 @@ function Registro() {
   const [errorGeneral, setErrorGeneral] = useState('');
   const [cargando, setCargando] = useState(false);
   const [rolRegistrado, setRolRegistrado] = useState(null);
+  const [aceptaTerminos, setAceptaTerminos] = useState(false);
 
   function actualizar(evento) {
     const { name, value } = evento.target;
@@ -173,9 +174,32 @@ function Registro() {
             />
           </Campo>
 
+          <div className="registro-terminos">
+            <label>
+              <input
+                type="checkbox"
+                checked={aceptaTerminos}
+                onChange={(evento) => setAceptaTerminos(evento.target.checked)}
+                required
+              />
+
+              <span>
+                He leído y acepto los{' '}
+                <Link to="/terminos" target="_blank" rel="noopener noreferrer">
+                  Términos y condiciones
+                </Link>
+                {' '}de ServiHome.
+              </span>
+            </label>
+          </div>
+
           <Mensaje tipo="error">{errorGeneral}</Mensaje>
 
-          <button type="submit" className="boton-contactar" disabled={cargando}>
+          <button
+            type="submit"
+            className="boton-contactar"
+            disabled={cargando || !aceptaTerminos}
+          >
             {cargando ? 'Creando cuenta…' : 'Crear cuenta'}
           </button>
         </form>
