@@ -1235,3 +1235,124 @@ class RenovacionTokensQATests(BaseQA):
         self.assertEqual(
             con_token_vencido.status_code, status.HTTP_401_UNAUTHORIZED
         )
+
+
+class ProfesionalesDisponiblesQATests(BaseQA):
+
+    url_profesionales = '/api/usuarios/profesionales/'
+
+    def consultar(self, servicio_id=None):
+        self.client.force_authenticate(user=self.usuario_cliente)
+        if servicio_id is None:
+            return self.client.get(self.url_profesionales)
+        return self.client.get(
+            self.url_profesionales, {'servicio_id': servicio_id}
+        )
+
+    def ids_de(self, respuesta):
+        datos = respuesta.json()
+        if isinstance(datos, dict):
+            datos = datos['results']
+        return [item['profesional_id'] for item in datos]
+
+    def test_sin_sesion_da_401(self):
+        respuesta = self.client.get(
+            self.url_profesionales, {'servicio_id': self.servicio.pk}
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_profesional_no_puede_consultar_profesionales(self):
+        self.client.force_authenticate(user=self.usuario_profesional)
+        respuesta = self.client.get(
+            self.url_profesionales, {'servicio_id': self.servicio.pk}
+        )
+        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_falta_servicio_id_da_400(self):
+        respuesta = self.consultar()
+        self.assertEqual(respuesta.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_servicio_id_invalido_da_400(self):
+        for valor in ['abc', '0', '-5']:
+            with self.subTest(servicio_id=valor):
+                respuesta = self.consultar(valor)
+                self.assertEqual(
+                    respuesta.status_code, status.HTTP_400_BAD_REQUEST
+                )
+
+    def test_cliente_ve_al_profesional_que_cumple_todo(self):
+        respuesta = self.consultar(self.servicio.pk)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids_de(respuesta), [self.profesional.pk])
+
+        item = respuesta.json()[0]
+        self.assertEqual(item['username'], 'qa_profesional')
+        self.assertEqual(float(item['precio']), 50000.0)
+
+    def test_profesional_no_disponible_no_aparece(self):
+        self.profesional.disponible = False
+        self.profesional.save(update_fields=['disponible'])
+
+        respuesta = self.consultar(self.servicio.pk)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids_de(respuesta), [])
+
+    def test_oferta_pendiente_no_aparece(self):
+        oferta = ServicioProfesional.objects.get(
+            profesional=self.profesional,
+            servicio=self.servicio
+        )
+        oferta.estado_aprobacion = 'pendiente'
+        oferta.save(update_fields=['estado_aprobacion'])
+
+        respuesta = self.consultar(self.servicio.pk)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids_de(respuesta), [])
+
+    def test_profesional_sin_aprobar_no_aparece(self):
+        self.profesional.estado_verificacion = 'pendiente'
+        self.profesional.save(update_fields=['estado_verificacion'])
+
+        respuesta = self.consultar(self.servicio.pk)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids_de(respuesta), [])
+
+    def test_profesional_sin_identidad_aprobada_no_aparece(self):
+        self.profesional.estado_identidad = 'pendiente'
+        self.profesional.save(update_fields=['estado_identidad'])
+
+        respuesta = self.consultar(self.servicio.pk)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(self.ids_de(respuesta), [])
+
+    def test_resultados_salen_ordenados_por_precio(self):
+        usuario_barato = User.objects.create_user(
+            username='qa_profesional_barato',
+            password='ClaveQaBarato123!'
+        )
+        perfil_barato = usuario_barato.perfil
+        perfil_barato.rol = 'profesional'
+        perfil_barato.estado_verificacion = 'aprobado'
+        perfil_barato.estado_identidad = 'aprobado'
+        perfil_barato.disponible = True
+        perfil_barato.save(
+            update_fields=[
+                'rol',
+                'estado_verificacion',
+                'estado_identidad',
+                'disponible',
+            ]
+        )
+        ServicioProfesional.objects.create(
+            servicio=self.servicio,
+            profesional=perfil_barato,
+            precio=Decimal('40000.00'),
+            estado_aprobacion='aprobado'
+        )
+
+        respuesta = self.consultar(self.servicio.pk)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.ids_de(respuesta),
+            [perfil_barato.pk, self.profesional.pk]
+        )
