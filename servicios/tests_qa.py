@@ -1356,3 +1356,153 @@ class ProfesionalesDisponiblesQATests(BaseQA):
             self.ids_de(respuesta),
             [perfil_barato.pk, self.profesional.pk]
         )
+
+
+
+
+import io
+import re
+from unittest.mock import patch
+
+from django.core.management import call_command
+from django.test import TestCase
+
+from servicios.notificaciones import enviar_correo
+
+
+class CorreosQATests(BaseQA):
+
+    def test_enviar_correo_sin_destinatario_no_envia_nada(self):
+        with patch('servicios.notificaciones.send_mail') as enviar:
+            resultado = enviar_correo('', 'Asunto', 'Mensaje')
+
+        self.assertFalse(resultado)
+        enviar.assert_not_called()
+
+    def test_fallo_al_enviar_correo_no_lanza_error(self):
+        with patch(
+            'servicios.notificaciones.send_mail',
+            side_effect=Exception('fallo de correo')
+        ):
+            resultado = enviar_correo(
+                'alguien@example.com', 'Asunto', 'Mensaje'
+            )
+
+        self.assertIn(resultado, [True, False])
+
+    def test_crear_propuesta_avisa_a_la_otra_parte(self):
+        self.usuario_profesional.email = 'profesional@example.com'
+        self.usuario_profesional.save()
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        with patch('servicios.views.enviar_correo') as enviar:
+            with self.captureOnCommitCallbacks(execute=True):
+                respuesta = self.client.post(
+                    self.url, {'precio': '50000'}, format='json'
+                )
+
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+        enviar.assert_called_once()
+        self.assertEqual(
+            enviar.call_args.kwargs['destinatario'],
+            'profesional@example.com'
+        )
+        self.assertEqual(
+            enviar.call_args.kwargs['asunto'],
+            'Nueva propuesta de precio - ServiHome'
+        )
+
+    def test_propuesta_se_crea_aunque_falle_el_correo(self):
+        self.usuario_profesional.email = 'profesional@example.com'
+        self.usuario_profesional.save()
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        with patch(
+            'servicios.notificaciones.send_mail',
+            side_effect=Exception('fallo de correo')
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                respuesta = self.client.post(
+                    self.url, {'precio': '50000'}, format='json'
+                )
+
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            PropuestaPrecio.objects.filter(solicitud=self.solicitud).count(),
+            1
+        )
+
+    def test_crear_incidente_avisa_a_los_administradores(self):
+        User.objects.create_user(
+            username='qa_admin_correo',
+            email='admin_correo@example.com',
+            password='ClaveQaAdmin123!',
+            is_staff=True,
+            is_superuser=True
+        )
+        self.solicitud.estado = 'completada'
+        self.solicitud.save(update_fields=['estado'])
+
+        self.client.force_authenticate(user=self.usuario_cliente)
+        with patch('servicios.views.enviar_correo') as enviar:
+            with self.captureOnCommitCallbacks(execute=True):
+                respuesta = self.client.post(
+                    '/api/incidentes/',
+                    {
+                        'solicitud': self.solicitud.pk,
+                        'tipo': 'danos_materiales',
+                        'descripcion': 'Incidente de prueba QA',
+                    },
+                    format='json'
+                )
+
+        self.assertEqual(respuesta.status_code, status.HTTP_201_CREATED)
+        destinatarios = [
+            llamada.kwargs['destinatario']
+            for llamada in enviar.call_args_list
+        ]
+        self.assertIn('admin_correo@example.com', destinatarios)
+
+
+class DatosDemoQATests(TestCase):
+
+    def ejecutar_dry_run(self):
+        salida = io.StringIO()
+        call_command('poblar_datos_demo', '--dry-run', stdout=salida)
+        return salida.getvalue()
+
+    def contar(self):
+        return {
+            'usuarios': User.objects.count(),
+            'categorias': Categoria.objects.count(),
+            'servicios': Servicio.objects.count(),
+            'ofertas': ServicioProfesional.objects.count(),
+            'solicitudes': SolicitudServicio.objects.count(),
+            'pagos': Pago.objects.count(),
+        }
+
+    def test_dry_run_no_guarda_nada(self):
+        antes = self.contar()
+
+        texto = self.ejecutar_dry_run()
+
+        self.assertEqual(self.contar(), antes)
+        self.assertIn('Simulación terminada', texto)
+
+    def test_dry_run_informa_entre_100_y_150_registros(self):
+        texto = self.ejecutar_dry_run()
+
+        coincidencia = re.search(r'Total de registros nuevos:\s*(\d+)', texto)
+        self.assertIsNotNone(coincidencia, texto)
+
+        total = int(coincidencia.group(1))
+        self.assertGreaterEqual(total, 100)
+        self.assertLessEqual(total, 150)
+
+    def test_no_hay_cambios_de_modelos_sin_migrar(self):
+        try:
+            call_command(
+                'makemigrations', '--check', '--dry-run', verbosity=0
+            )
+        except SystemExit:
+            self.fail('Hay cambios en los modelos que no tienen migración.')
