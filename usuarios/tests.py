@@ -937,6 +937,7 @@ class AdministracionProfesionalesTests(TestCase):
 
         self.perfil_profesional = self.usuario_profesional.perfil
         self.perfil_profesional.rol = 'profesional'
+        self.perfil_profesional.estado_identidad = 'aprobado'
         self.perfil_profesional.estado_verificacion = 'pendiente'
         self.perfil_profesional.disponible = False
         self.perfil_profesional.save()
@@ -946,7 +947,34 @@ class AdministracionProfesionalesTests(TestCase):
             f'/api/usuarios/admin/profesionales/'
             f'{self.perfil_profesional.pk}/'
         )
+    def test_profesional_pendiente_puede_subir_documento_identidad(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
 
+        archivo = SimpleUploadedFile(
+            'identidad.pdf',
+            b'%PDF-1.4 contenido de prueba',
+            content_type='application/pdf'
+        )
+
+        respuesta = self.client.post(
+            '/api/usuarios/mis-documentos/',
+            {
+                'tipo': 'identidad',
+                'archivo': archivo
+            },
+            format='multipart'
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+
+        self.assertTrue(
+            DocumentoVerificacion.objects.filter(
+                perfil=self.perfil_profesional,
+                tipo='identidad'
+            ).exists()
+        )
     def test_usuario_normal_no_puede_listar_profesionales_pendientes(self):
         self.client.force_authenticate(user=self.usuario_normal)
 
@@ -1051,8 +1079,8 @@ class AdministracionProfesionalesTests(TestCase):
         self.assertEqual(respuesta.status_code, 400)
     def test_profesional_pendiente_puede_consultar_su_verificacion(self):
         self.client.force_authenticate(
-            user=self.usuario_profesional
-        )
+        user=self.usuario_profesional
+    )
 
         respuesta = self.client.get(
             '/api/usuarios/mi-verificacion/'
@@ -1063,34 +1091,35 @@ class AdministracionProfesionalesTests(TestCase):
             respuesta.data['estado_verificacion'],
             'pendiente'
         )
-        self.assertEqual(
-            list(respuesta.data.keys()),
-            ['estado_verificacion']
-        )
+        self.assertIn('estado_identidad', respuesta.data)
+        self.assertIn('disponible', respuesta.data)
+        self.assertIn('documentos', respuesta.data)
 
-    def test_profesional_pendiente_no_puede_consultar_su_perfil(self):
-        self.client.force_authenticate(
-            user=self.usuario_profesional
-        )
 
-        respuesta = self.client.get(
-            '/api/usuarios/perfil/'
-        )
+def test_profesional_pendiente_puede_consultar_su_perfil(self):
+    self.client.force_authenticate(
+        user=self.usuario_profesional
+    )
 
-        self.assertEqual(respuesta.status_code, 403)
+    respuesta = self.client.get(
+        '/api/usuarios/perfil/'
+    )
 
-    def test_profesional_pendiente_no_puede_modificar_su_perfil(self):
-        self.client.force_authenticate(
-            user=self.usuario_profesional
-        )
+    self.assertEqual(respuesta.status_code, 200)
 
-        respuesta = self.client.patch(
-            '/api/usuarios/perfil/',
-            {'telefono': '3001234567'},
-            format='json'
-        )
 
-        self.assertEqual(respuesta.status_code, 403)
+def test_profesional_pendiente_puede_modificar_su_perfil(self):
+    self.client.force_authenticate(
+        user=self.usuario_profesional
+    )
+
+    respuesta = self.client.patch(
+        '/api/usuarios/perfil/',
+        {'telefono': '3001234567'},
+        format='json'
+    )
+
+    self.assertEqual(respuesta.status_code, 200)
 class RegistroUsuarioTests(TestCase):
 
     def setUp(self):
@@ -1177,6 +1206,126 @@ class RegistroUsuarioTests(TestCase):
         self.assertFalse(
             User.objects.filter(username='nuevo_usuario').exists()
         )
+
+
+class CambiarDisponibilidadTests(TestCase):
+
+    def setUp(self):
+        self.client = APIClient()
+
+        self.usuario_profesional = User.objects.create_user(
+            username='profesional_disponibilidad',
+            password='ClaveProfesional123!'
+        )
+
+        self.perfil_profesional = self.usuario_profesional.perfil
+        self.perfil_profesional.rol = 'profesional'
+        self.perfil_profesional.estado_identidad = 'aprobado'
+        self.perfil_profesional.estado_verificacion = 'aprobado'
+        self.perfil_profesional.disponible = False
+        self.perfil_profesional.save()
+
+        self.url = '/api/usuarios/disponibilidad/'
+
+    def test_profesional_puede_activar_disponibilidad(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            self.url,
+            {'disponible': True},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil_profesional.refresh_from_db()
+        self.assertTrue(self.perfil_profesional.disponible)
+
+    def test_profesional_puede_pausar_disponibilidad(self):
+        self.perfil_profesional.disponible = True
+        self.perfil_profesional.save()
+
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            self.url,
+            {'disponible': False},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil_profesional.refresh_from_db()
+        self.assertFalse(self.perfil_profesional.disponible)
+
+    def test_cliente_no_puede_cambiar_disponibilidad(self):
+        usuario_cliente = User.objects.create_user(
+            username='cliente_disponibilidad',
+            password='ClaveCliente123!'
+        )
+
+        self.client.force_authenticate(user=usuario_cliente)
+
+        respuesta = self.client.patch(
+            self.url,
+            {'disponible': True},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_profesional_no_aprobado_no_puede_activar(self):
+        self.perfil_profesional.estado_verificacion = 'pendiente'
+        self.perfil_profesional.save()
+
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            self.url,
+            {'disponible': True},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_usuario_sin_perfil_recibe_error(self):
+        usuario = User.objects.create_user(
+            username='sin_perfil_disponibilidad',
+            password='ClaveUsuario123!'
+        )
+        usuario.perfil.delete()
+
+        usuario = User.objects.get(pk=usuario.pk)
+
+        self.client.force_authenticate(user=usuario)
+
+        respuesta = self.client.patch(
+            self.url,
+            {'disponible': True},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_rechaza_valor_no_booleano(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            self.url,
+            {'disponible': 'si'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
 class DocumentoVerificacionDescargaTests(TestCase):
 
     def setUp(self):

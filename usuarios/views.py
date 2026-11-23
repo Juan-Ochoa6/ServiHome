@@ -956,6 +956,19 @@ def cambiar_estado_profesional(request, pk):
             {'error': 'Este profesional ya fue revisado.'},
             status=status.HTTP_400_BAD_REQUEST
         )
+    if (
+        nuevo_estado == 'aprobado'
+        and perfil.estado_identidad != 'aprobado'
+    ):
+        return Response(
+            {
+                'error': (
+                    'No se puede aprobar al profesional '
+                    'sin tener su documento de identidad aprobado.'
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     perfil.estado_verificacion = nuevo_estado
     perfil.disponible = (nuevo_estado == 'aprobado')
@@ -1203,14 +1216,6 @@ class MiVerificacionAPIView(generics.GenericAPIView):
     def get(self, request):
         perfil = Perfil.objects.get(usuario=request.user)
 
-        if (
-            perfil.rol == 'profesional'
-            and perfil.estado_verificacion != 'aprobado'
-        ):
-            return Response({
-                'estado_verificacion': perfil.estado_verificacion
-            })
-
         documentos = DocumentoVerificacion.objects.filter(
             perfil=perfil
         ).order_by('-fecha_subida')
@@ -1232,15 +1237,12 @@ class MiPerfilAPIView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         try:
             perfil = Perfil.objects.select_related(
-                'usuario'
-            ).get(usuario=self.request.user)
+            'usuario'
+        ).get(usuario=self.request.user)
 
         except Perfil.DoesNotExist:
             raise PermissionDenied(
-                'Tu usuario no tiene un perfil configurado.'
-            )
-
-        if perfil.rol == 'profesional':
-            exigir_profesional_aprobado(perfil)
+            'Tu usuario no tiene un perfil configurado.'
+        )
 
         return perfil

@@ -266,7 +266,19 @@ class MiPerfilSerializer(serializers.ModelSerializer):
             'estado_identidad',
             'disponible',
         ]
+    def validate_email(self, value):
+        value = value.strip().lower()
 
+        usuario = self.instance.usuario
+
+        if User.objects.filter(
+            email__iexact=value
+        ).exclude(pk=usuario.pk).exists():
+            raise serializers.ValidationError(
+                'Este correo electrónico ya está registrado.'
+            )
+
+        return value
     def update(self, instance, validated_data):
         datos_usuario = validated_data.pop('usuario', {})
 
@@ -278,6 +290,16 @@ class MiPerfilSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 class ProfesionalDisponibleSerializer(serializers.ModelSerializer):
+    categoria_id = serializers.IntegerField(
+        source='servicio.categoria.id',
+        read_only=True
+    )
+
+    categoria_nombre = serializers.CharField(
+        source='servicio.categoria.nombre',
+        read_only=True
+    )
+
     profesional_id = serializers.IntegerField(
         source='profesional.id',
         read_only=True
@@ -306,4 +328,6 @@ class ProfesionalDisponibleSerializer(serializers.ModelSerializer):
             'descripcion_profesional',
             'experiencia_anos',
             'precio',
+            'categoria_id',
+            'categoria_nombre',
         ]

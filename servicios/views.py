@@ -14,6 +14,7 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     OpenApiParameter,
 )
+from django.db.models import Q
 from django.db.models import Avg, Count
 from django.shortcuts import get_object_or_404
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -109,13 +110,26 @@ class CategoriaListAPIView(generics.ListAPIView):
 
 
 class ServicioListAPIView(generics.ListAPIView):
-    queryset = (
-        Servicio.objects
-        .filter(activo=True)
-        .select_related('categoria')
-    )
     serializer_class = ServicioSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = (
+            Servicio.objects
+            .filter(activo=True)
+            .select_related('categoria')
+        )
+
+        termino = self.request.query_params.get('search', '').strip()
+
+        if termino:
+            queryset = queryset.filter(
+                Q(nombre__icontains=termino)
+                | Q(descripcion__icontains=termino)
+                | Q(categoria__nombre__icontains=termino)
+            )
+
+        return queryset
 
 
 class SolicitudListCreateAPIView(generics.ListCreateAPIView):
@@ -920,16 +934,31 @@ class ServicioProfesionalDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
         if perfil.estado_identidad != 'aprobado':
             raise PermissionDenied(
-            'Debes tener tu identidad aprobada para modificar tus ofertas.'
-        )
+                'Debes tener tu identidad aprobada para modificar tus ofertas.'
+            )
+
         if perfil.estado_verificacion != 'aprobado':
             raise PermissionDenied(
-        'Debes estar aprobado por ServiHome para ofrecer servicios.'
-    )
+                'Debes estar aprobado por ServiHome para ofrecer servicios.'
+            )
 
         serializer.save(
-        estado_aprobacion='pendiente'
+            estado_aprobacion='pendiente'
         )
+
+    def perform_destroy(self, instance):
+        existe_solicitud = SolicitudServicio.objects.filter(
+            profesional=instance.profesional,
+            servicio=instance.servicio
+        ).exists()
+
+        if existe_solicitud:
+            raise ValidationError(
+                'No puedes eliminar esta oferta porque tiene '
+                'solicitudes asociadas.'
+            )
+
+        instance.delete()
 
 class MiPortafolioListCreateAPIView(generics.ListCreateAPIView):
 

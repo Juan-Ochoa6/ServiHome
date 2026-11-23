@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
-
+from django.utils import timezone
 from usuarios.models import Perfil
 from servicios.models import (
     Categoria,
@@ -1960,6 +1960,56 @@ class CrearOfertaTests(APITestCase):
         )
 
         self.assertEqual(respuesta.status_code, 400)
+    def test_profesional_puede_eliminar_oferta_sin_solicitudes(self):
+        oferta = ServicioProfesional.objects.create(
+            profesional=self.profesional,
+            servicio=self.servicio,
+            precio=Decimal('50000.00'),
+            estado_aprobacion='aprobado'
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.delete(
+            f'{self.url}{oferta.pk}/'
+        )
+
+        self.assertEqual(respuesta.status_code, 204)
+        self.assertFalse(
+            ServicioProfesional.objects.filter(pk=oferta.pk).exists()
+        )
+
+    def test_no_se_puede_eliminar_oferta_con_solicitudes(self):
+        oferta = ServicioProfesional.objects.create(
+            profesional=self.profesional,
+            servicio=self.servicio,
+            precio=Decimal('50000.00'),
+            estado_aprobacion='aprobado'
+        )
+
+        SolicitudServicio.objects.create(
+            cliente=self.cliente,
+            profesional=self.profesional,
+            servicio=self.servicio,
+            descripcion='Solicitud para probar protección de oferta',
+            direccion_servicio='Calle 10 # 20-30',
+            fecha_solicitada=timezone.now()
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.delete(
+            f'{self.url}{oferta.pk}/'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertTrue(
+            ServicioProfesional.objects.filter(pk=oferta.pk).exists()
+        )
 class OfertaPublicaTests(APITestCase):
 
     def setUp(self):
