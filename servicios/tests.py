@@ -345,6 +345,40 @@ class SolicitudPermisosTests(APITestCase):
             cantidad_antes + 1
         )
 
+    def test_cliente_puede_aceptar_precio_publicado_al_crear_solicitud(self):
+        self.client.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        datos = {
+            'profesional': self.profesional1.pk,
+            'servicio': self.servicio.pk,
+            'descripcion': 'Acepto el precio publicado',
+            'direccion_servicio': 'Dirección de prueba',
+            'fecha_solicitada': (
+                timezone.now() + timedelta(days=3)
+            ).isoformat(),
+            'aceptar_precio_publicado': True,
+        }
+
+        respuesta = self.client.post(
+            self.url_solicitudes,
+            datos,
+            format='json'
+        )
+
+        self.assertEqual(
+            respuesta.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        nueva = SolicitudServicio.objects.latest('id')
+
+        self.assertEqual(
+            nueva.precio_acordado,
+            self.oferta.precio
+        )
+        self.assertEqual(nueva.estado, 'pendiente')
 
     def test_profesional_no_puede_crear_solicitudes(self):
         self.client.force_authenticate(
@@ -687,6 +721,45 @@ class CodigosServicioTests(APITestCase):
         self.assertEqual(self.solicitud.estado, 'aceptada')
         self.assertEqual(len(self.solicitud.codigo_inicio), 6)
         self.assertTrue(self.solicitud.codigo_inicio.isdigit())
+    def test_profesional_puede_aceptar_solicitud_con_precio_acordado(self):
+        self.solicitud.precio_acordado = Decimal('50000.00')
+        self.solicitud.save(update_fields=['precio_acordado'])
+
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'aceptada'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.solicitud.refresh_from_db()
+
+        self.assertEqual(self.solicitud.estado, 'aceptada')
+        self.assertEqual(len(self.solicitud.codigo_inicio), 6)
+        self.assertTrue(self.solicitud.codigo_inicio.isdigit())
+
+    def test_profesional_no_puede_aceptar_solicitud_sin_precio_acordado(self):
+        self.client.force_authenticate(
+            user=self.usuario_profesional
+        )
+
+        respuesta = self.client.patch(
+            self.url_estado,
+            {'estado': 'aceptada'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+        self.solicitud.refresh_from_db()
+
+        self.assertEqual(self.solicitud.estado, 'pendiente')
+        self.assertFalse(self.solicitud.codigo_inicio)
 
     def test_codigo_inicio_incorrecto_no_inicia_servicio(self):
         self.solicitud.estado = 'aceptada'
@@ -1283,6 +1356,34 @@ class PagosTests(APITestCase):
         self.assertEqual(
             len(respuesta_profesional.data),
             1
+        )
+    def test_administrador_puede_consultar_todos_los_pagos(self):
+
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='transferencia'
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_admin
+        )
+
+        respuesta = self.client.get(
+            self.url_mis_pagos
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(respuesta.data), 1)
+
+        self.assertEqual(
+            respuesta.data[0]['id'],
+            pago.pk
+        )
+
+        self.assertEqual(
+            respuesta.data[0]['estado'],
+            'pendiente'
         )
 class FinanzasTests(APITestCase):
 

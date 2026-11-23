@@ -975,6 +975,73 @@ class AdministracionProfesionalesTests(TestCase):
                 tipo='identidad'
             ).exists()
         )
+
+    def test_aprobar_documento_identidad_aprueba_profesional(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.perfil_profesional,
+            tipo='identidad',
+            archivo=SimpleUploadedFile(
+                'identidad.pdf',
+                b'%PDF-1.4 contenido de prueba',
+                content_type='application/pdf'
+            )
+        )
+
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            f'/api/usuarios/admin/documentos/{documento.pk}/',
+            {'estado': 'aprobado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil_profesional.refresh_from_db()
+
+        self.assertEqual(
+            self.perfil_profesional.estado_identidad,
+            'aprobado'
+        )
+        self.assertEqual(
+            self.perfil_profesional.estado_verificacion,
+            'aprobado'
+        )
+        self.assertTrue(self.perfil_profesional.disponible)
+
+    def test_rechazar_documento_identidad_rechaza_profesional(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.perfil_profesional,
+            tipo='identidad',
+            archivo=SimpleUploadedFile(
+                'identidad.pdf',
+                b'%PDF-1.4 contenido de prueba',
+                content_type='application/pdf'
+            )
+        )
+
+        self.client.force_authenticate(user=self.usuario_admin)
+
+        respuesta = self.client.patch(
+            f'/api/usuarios/admin/documentos/{documento.pk}/',
+            {'estado': 'rechazado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil_profesional.refresh_from_db()
+
+        self.assertEqual(
+            self.perfil_profesional.estado_identidad,
+            'rechazado'
+        )
+        self.assertEqual(
+            self.perfil_profesional.estado_verificacion,
+            'rechazado'
+        )
+        self.assertFalse(self.perfil_profesional.disponible)
+
     def test_usuario_normal_no_puede_listar_profesionales_pendientes(self):
         self.client.force_authenticate(user=self.usuario_normal)
 

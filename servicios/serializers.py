@@ -49,6 +49,12 @@ class ServicioSerializer(serializers.ModelSerializer):
 
 
 class SolicitudServicioSerializer(serializers.ModelSerializer):
+    aceptar_precio_publicado = serializers.BooleanField(
+        write_only=True,
+        required=False,
+        default=False
+    )
+
     cliente_nombre = serializers.CharField(
         source='cliente.usuario.username',
         read_only=True
@@ -108,6 +114,7 @@ class SolicitudServicioSerializer(serializers.ModelSerializer):
             'fecha_creacion',
             'codigo_inicio',
             'codigo_finalizacion',
+            'aceptar_precio_publicado',
         ]
 
         read_only_fields = [

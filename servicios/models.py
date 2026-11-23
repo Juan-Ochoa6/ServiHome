@@ -3,7 +3,16 @@ from django.db import models
 from django.core.exceptions import ValidationError
 import secrets
 from decimal import Decimal, ROUND_HALF_UP
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 
+
+class AlmacenamientoComprobantesPrivados(FileSystemStorage):
+    def __init__(self):
+        super().__init__(
+            location=settings.STORAGE_ROOT / 'private_media' / 'comprobantes_pagos',
+            base_url=None
+        )
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100, unique=True)
     descripcion = models.TextField(blank=True)
@@ -379,6 +388,12 @@ class Pago(models.Model):
 
     referencia = models.CharField(
         max_length=150,
+        blank=True
+    )
+    comprobante = models.FileField(
+        storage=AlmacenamientoComprobantesPrivados(),
+        upload_to='pagos/',
+        null=True,
         blank=True
     )
 

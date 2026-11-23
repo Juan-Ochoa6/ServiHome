@@ -181,10 +181,29 @@ class SolicitudListCreateAPIView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         perfil = Perfil.objects.get(usuario=self.request.user)
 
+        aceptar_precio = serializer.validated_data.pop(
+            'aceptar_precio_publicado',
+            False
+        )
+
+        precio_acordado = None
+
+        if aceptar_precio:
+            profesional = serializer.validated_data['profesional']
+            servicio = serializer.validated_data['servicio']
+
+            oferta = ServicioProfesional.objects.get(
+                profesional=profesional,
+                servicio=servicio,
+                estado_aprobacion='aprobado'
+            )
+
+            precio_acordado = oferta.precio
+
         serializer.save(
             cliente=perfil,
             estado='pendiente',
-            precio_acordado=None,
+            precio_acordado=precio_acordado,
         )
 
 @extend_schema(
@@ -278,10 +297,11 @@ class SolicitudEstadoAPIView(APIView):
                     )
 
                 estados_permitidos = {
-                    'pendiente': ['rechazada'],
+                    'pendiente': ['rechazada', 'aceptada'],
                     'aceptada': ['en_proceso'],
                     'en_proceso': ['completada'],
                 }
+
 
             elif perfil.rol == 'cliente':
                 if solicitud.cliente_id != perfil.id:
@@ -308,6 +328,57 @@ class SolicitudEstadoAPIView(APIView):
                 return Response(
                     {'error': 'No puedes realizar ese cambio de estado.'},
                     status=status.HTTP_400_BAD_REQUEST,
+                )
+            if (
+                perfil.rol == 'profesional'
+                and solicitud.estado == 'pendiente'
+                and nuevo_estado == 'aceptada'
+            ):
+                if solicitud.precio_acordado is None:
+                    return Response(
+                        {
+                            'error': (
+                                'El cliente debe aceptar primero '
+                                'un precio para poder aceptar la solicitud.'
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                solicitud.codigo_inicio = (
+                    f"{secrets.randbelow(1000000):06d}"
+                )
+                solicitud.estado = 'aceptada'
+                solicitud.save(
+                    update_fields=[
+                        'estado',
+                        'codigo_inicio',
+                    ]
+                )
+
+                destinatario = solicitud.cliente.usuario
+
+                asunto = 'Solicitud aceptada - ServiHome'
+
+                mensaje_correo = (
+                    f'Hola {destinatario.username},\n\n'
+                    'El profesional ha aceptado tu solicitud '
+                    'y el precio acordado.\n\n'
+                    f'Servicio: {solicitud.servicio.nombre}\n'
+                    f'Profesional: '
+                    f'{solicitud.profesional.usuario.username}\n'
+                    f'Precio acordado: ${solicitud.precio_acordado}\n\n'
+                    'Puedes consultar el código de inicio '
+                    'en ServiHome.\n\n'
+                    'Equipo ServiHome'
+                )
+
+                transaction.on_commit(
+                    lambda: enviar_correo(
+                        destinatario=destinatario.email,
+                        asunto=asunto,
+                        mensaje=mensaje_correo,
+                    )
                 )
 
             if nuevo_estado in ['en_proceso', 'completada']:
@@ -1203,6 +1274,9 @@ class MisPagosListAPIView(generics.ListAPIView):
             'solicitud__cliente__usuario',
             'solicitud__profesional__usuario'
         )
+
+        if self.request.user.is_staff:
+            return pagos
 
         if perfil.rol == 'cliente':
             return pagos.filter(

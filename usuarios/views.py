@@ -1202,14 +1202,30 @@ class AdminDocumentoVerificacionDetailAPIView(generics.UpdateAPIView):
     permission_classes = [IsAdminUser]
     http_method_names = ['patch']
 
+
     def perform_update(self, serializer):
         documento = serializer.save()
 
-        if documento.tipo == 'identidad':
-            documento.perfil.estado_identidad = documento.estado
-            documento.perfil.save(
-                update_fields=['estado_identidad']
+        if (
+            documento.tipo == 'identidad'
+            and documento.perfil.rol == 'profesional'
+        ):
+            perfil = documento.perfil
+
+            perfil.estado_identidad = documento.estado
+            perfil.estado_verificacion = documento.estado
+            perfil.disponible = (
+                documento.estado == 'aprobado'
             )
+
+            perfil.save(
+                update_fields=[
+                    'estado_identidad',
+                    'estado_verificacion',
+                    'disponible'
+                ]
+            )
+
 class MiVerificacionAPIView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
