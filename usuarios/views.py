@@ -1,14 +1,19 @@
-
 import base64
 import hashlib
 import secrets
 from datetime import datetime, timezone as datetime_timezone
 from io import BytesIO
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import generics
 
 import pyotp
 import qrcode
-
-from django.contrib.auth import authenticate, get_user_model
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.contrib.auth import (
+    authenticate,
+    get_user_model,
+    login as django_login,
+)
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
 from django.core.signing import BadSignature, SignatureExpired
@@ -24,16 +29,26 @@ from rest_framework.permissions import (
 )
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404, render, redirect
 from drf_spectacular.utils import (
     extend_schema,
     OpenApiResponse,
+    OpenApiParameter,
     inline_serializer,
 )
 
 from usuarios.models import DesafioLogin, CodigoRecuperacionMFA
-from .serializers import RegistroUsuarioSerializer
-from .models import Perfil
+from .serializers import (
+    RegistroUsuarioSerializer,
+    DocumentoVerificacionSerializer,
+    AdminDocumentoVerificacionSerializer,
+    MiPerfilSerializer,
+    ProfesionalDisponibleSerializer,
+)
+from .models import Perfil, DocumentoVerificacion
+from django.db.models import Q
+from servicios.models import ServicioProfesional
 
 
 User = get_user_model()
@@ -149,6 +164,106 @@ def validar_codigo_totp_unico(perfil, codigo):
     except (AttributeError, ImproperlyConfigured, ValueError):
         return False
 
+
+def acceso_admin(request):
+    """Primer paso: validar contraseña de un administrador."""
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+
+        usuario = authenticate(
+            request,
+            username=username,
+            password=password
+        )
+
+        if (
+            not usuario
+            or not usuario.is_active
+            or not (usuario.is_staff or usuario.is_superuser)
+        ):
+            return render(request, 'admin/acceso.html', {
+                'paso': 'credenciales',
+                'error': 'Credenciales administrativas incorrectas.'
+            })
+
+        try:
+            perfil = usuario.perfil
+        except AttributeError:
+            return render(request, 'admin/acceso.html', {
+                'paso': 'credenciales',
+                'error': 'El administrador no tiene un perfil configurado.'
+            })
+
+        if not perfil.two_factor_enabled:
+            return render(request, 'admin/acceso.html', {
+                'paso': 'credenciales',
+                'error': 'Debes configurar MFA antes de acceder al panel.'
+            })
+
+        request.session['admin_mfa_pending_user_id'] = usuario.pk
+        request.session['admin_mfa_attempts'] = 0
+
+        return redirect('/admin/acceso/mfa/')
+
+    return render(request, 'admin/acceso.html', {
+        'paso': 'credenciales'
+    })
+
+
+def verificar_mfa_admin(request):
+    """Segundo paso: validar TOTP y crear la sesión administrativa."""
+
+    user_id = request.session.get('admin_mfa_pending_user_id')
+
+    if not user_id:
+        return redirect('/admin/acceso/')
+
+    Usuario = get_user_model()
+
+    usuario = Usuario.objects.filter(
+        pk=user_id,
+        is_active=True
+    ).filter(
+        Q(is_staff=True) | Q(is_superuser=True)
+    ).first()
+
+    if not usuario:
+        request.session.pop('admin_mfa_pending_user_id', None)
+        request.session.pop('admin_mfa_attempts', None)
+        return redirect('/admin/acceso/')
+
+    if request.method == 'POST':
+        codigo = request.POST.get('codigo', '').strip()
+        intentos = request.session.get('admin_mfa_attempts', 0)
+
+        if intentos >= 5:
+            request.session.pop('admin_mfa_pending_user_id', None)
+            request.session.pop('admin_mfa_attempts', None)
+            return redirect('/admin/acceso/')
+
+        if validar_codigo_totp_unico(usuario.perfil, codigo):
+            django_login(request, usuario)
+
+            request.session['admin_mfa_verified_user_id'] = usuario.pk
+
+            request.session.pop('admin_mfa_pending_user_id', None)
+            request.session.pop('admin_mfa_attempts', None)
+
+            return redirect('/admin/')
+
+        request.session['admin_mfa_attempts'] = intentos + 1
+
+        return render(request, 'admin/acceso.html', {
+            'paso': 'mfa',
+            'error': 'Código incorrecto o expirado.',
+            'intentos_restantes': 4 - intentos
+        })
+
+    return render(request, 'admin/acceso.html', {
+        'paso': 'mfa'
+    })
 
 def obtener_hash_challenge(challenge):
     return hashlib.sha256(
@@ -828,3 +943,278 @@ def cambiar_estado_profesional(request, pk):
         'estado_verificacion': perfil.estado_verificacion,
         'disponible': perfil.disponible,
     })
+@extend_schema(
+    tags=['Profesionales'],
+    summary='Activar o pausar disponibilidad',
+    description='Permite al profesional cambiar su disponibilidad.',
+    request={
+        'application/json': {
+            'type': 'object',
+            'properties': {
+                'disponible': {'type': 'boolean'}
+            },
+            'required': ['disponible']
+        }
+    }
+)
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def cambiar_disponibilidad(request):
+    """Permite al profesional activar o pausar su disponibilidad."""
+
+    try:
+        perfil = request.user.perfil
+    except Perfil.DoesNotExist:
+        return Response(
+            {'error': 'No se encontró el perfil del usuario.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if perfil.rol != 'profesional':
+        return Response(
+            {'error': 'Solo los profesionales pueden cambiar su disponibilidad.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    if perfil.estado_verificacion != 'aprobado':
+        return Response(
+            {'error': 'Debes estar aprobado para activar tu disponibilidad.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    disponible = request.data.get('disponible')
+
+    if not isinstance(disponible, bool):
+        return Response(
+            {'error': 'El campo disponible debe ser true o false.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    perfil.disponible = disponible
+    perfil.save(update_fields=['disponible'])
+
+    return Response({
+        'mensaje': 'Disponibilidad actualizada correctamente.',
+        'disponible': perfil.disponible
+    })
+@extend_schema(
+    tags=['Profesionales'],
+    summary='Listar profesionales disponibles por servicio',
+    description=(
+        'Permite a los clientes consultar profesionales disponibles '
+        'con ofertas aprobadas para un servicio específico.'
+    ),
+    parameters=[
+        OpenApiParameter(
+            name='servicio_id',
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description='ID del servicio que desea contratar el cliente.'
+        )
+    ],
+)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def listar_profesionales_disponibles(request):
+    """Lista profesionales disponibles para un servicio específico."""
+
+    try:
+        perfil_cliente = request.user.perfil
+    except Perfil.DoesNotExist:
+        return Response(
+            {'error': 'No se encontró el perfil del usuario.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if perfil_cliente.rol != 'cliente':
+        return Response(
+            {'error': 'Solo los clientes pueden consultar profesionales.'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    servicio_id = request.query_params.get('servicio_id')
+
+    if not servicio_id:
+        return Response(
+            {'error': 'Debes proporcionar el parámetro servicio_id.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        servicio_id = int(servicio_id)
+
+        if servicio_id <= 0:
+            raise ValueError
+
+    except (ValueError, TypeError):
+        return Response(
+            {'error': 'El servicio_id debe ser un número entero positivo.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    ofertas = ServicioProfesional.objects.filter(
+        servicio_id=servicio_id,
+        estado_aprobacion='aprobado',
+        profesional__rol='profesional',
+        profesional__estado_verificacion='aprobado',
+        profesional__estado_identidad='aprobado',
+        profesional__disponible=True
+    ).select_related(
+        'profesional__usuario'
+    ).order_by('precio')
+
+    serializer = ProfesionalDisponibleSerializer(
+        ofertas,
+        many=True
+    )
+
+    return Response(serializer.data)
+class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
+    serializer_class = DocumentoVerificacionSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        return DocumentoVerificacion.objects.filter(
+            perfil=perfil
+        ).order_by('-fecha_subida')
+
+    def perform_create(self, serializer):
+        try:
+            perfil = Perfil.objects.get(usuario=self.request.user)
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        tipo = serializer.validated_data['tipo']
+
+
+        if perfil.rol == 'cliente' and tipo != 'identidad':
+            raise ValidationError(
+                'Los clientes solamente pueden subir documentos de identidad.'
+            )
+
+        serializer.save(perfil=perfil)
+class DocumentoVerificacionDescargaAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        documento = get_object_or_404(
+            DocumentoVerificacion.objects.select_related(
+                'perfil__usuario'
+            ),
+            pk=pk
+        )
+
+        # Solo el propietario o un administrador puede descargar.
+        if (
+            not request.user.is_staff
+            and documento.perfil.usuario_id != request.user.id
+        ):
+            raise PermissionDenied(
+                'No tienes permiso para descargar este documento.'
+            )
+
+        # Verificar que el archivo exista físicamente.
+        if not documento.archivo or not documento.archivo.storage.exists(
+            documento.archivo.name
+        ):
+            return Response(
+                {'detail': 'El archivo no está disponible.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        nombre_archivo = documento.archivo.name.rsplit('/', 1)[-1]
+
+        return FileResponse(
+            documento.archivo.open('rb'),
+            as_attachment=True,
+            filename=nombre_archivo,
+            content_type='application/octet-stream'
+        )
+
+class AdminDocumentosVerificacionAPIView(generics.ListAPIView):
+    serializer_class = AdminDocumentoVerificacionSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        queryset = DocumentoVerificacion.objects.select_related(
+            'perfil__usuario'
+        ).order_by('-fecha_subida')
+
+        estado = self.request.query_params.get('estado')
+
+        if estado:
+            queryset = queryset.filter(estado=estado)
+
+        return queryset
+class AdminDocumentoVerificacionDetailAPIView(generics.UpdateAPIView):
+    queryset = DocumentoVerificacion.objects.select_related('perfil')
+    serializer_class = AdminDocumentoVerificacionSerializer
+    permission_classes = [IsAdminUser]
+    http_method_names = ['patch']
+
+    def perform_update(self, serializer):
+        documento = serializer.save()
+
+        if documento.tipo == 'identidad':
+            documento.perfil.estado_identidad = documento.estado
+            documento.perfil.save(
+                update_fields=['estado_identidad']
+            )
+class MiVerificacionAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        perfil = Perfil.objects.get(usuario=request.user)
+
+        if (
+            perfil.rol == 'profesional'
+            and perfil.estado_verificacion != 'aprobado'
+        ):
+            return Response({
+                'estado_verificacion': perfil.estado_verificacion
+            })
+
+        documentos = DocumentoVerificacion.objects.filter(
+            perfil=perfil
+        ).order_by('-fecha_subida')
+
+        return Response({
+            'estado_verificacion': perfil.estado_verificacion,
+            'estado_identidad': perfil.estado_identidad,
+            'disponible': perfil.disponible,
+            'documentos': DocumentoVerificacionSerializer(
+                documentos,
+                many=True
+            ).data
+        })
+
+class MiPerfilAPIView(generics.RetrieveUpdateAPIView):
+    serializer_class = MiPerfilSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'patch', 'head', 'options']
+    def get_object(self):
+        try:
+            perfil = Perfil.objects.select_related(
+                'usuario'
+            ).get(usuario=self.request.user)
+
+        except Perfil.DoesNotExist:
+            raise PermissionDenied(
+                'Tu usuario no tiene un perfil configurado.'
+            )
+
+        if perfil.rol == 'profesional':
+            exigir_profesional_aprobado(perfil)
+
+        return perfil

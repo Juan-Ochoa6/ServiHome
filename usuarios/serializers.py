@@ -2,8 +2,14 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import Perfil
+from .models import Perfil, DocumentoVerificacion
+from servicios.models import ServicioProfesional
 
+
+import os
+
+from PIL import Image
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 class RegistroUsuarioSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -95,3 +101,204 @@ class RegistroUsuarioSerializer(serializers.ModelSerializer):
         perfil.save()
 
         return usuario
+class DocumentoVerificacionSerializer(serializers.ModelSerializer):
+    archivo = serializers.FileField(write_only=True)
+    url_descarga = serializers.SerializerMethodField()
+    def validate_archivo(self, archivo):
+        extensiones_permitidas = {'.pdf', '.jpg', '.jpeg', '.png'}
+        extension = os.path.splitext(archivo.name)[1].lower()
+
+        if extension not in extensiones_permitidas:
+            raise serializers.ValidationError(
+                'Solo se permiten archivos PDF, JPG y PNG.'
+            )
+
+        limite = 5 * 1024 * 1024
+
+        if archivo.size > limite:
+            raise serializers.ValidationError(
+                'El archivo no puede superar los 5 MB.'
+            )
+
+        contenido = archivo.read(8)
+        archivo.seek(0)
+
+        if extension == '.pdf':
+            if not contenido.startswith(b'%PDF-'):
+                raise serializers.ValidationError(
+                    'El archivo no tiene un formato PDF válido.'
+                )
+
+        else:
+            try:
+                imagen = Image.open(archivo)
+                imagen.verify()
+                archivo.seek(0)
+
+                formatos = {
+                    '.jpg': 'JPEG',
+                    '.jpeg': 'JPEG',
+                    '.png': 'PNG',
+                }
+
+                if imagen.format != formatos[extension]:
+                    raise serializers.ValidationError(
+                        'El contenido no coincide con la extensión del archivo.'
+                    )
+
+            except (OSError, DjangoValidationError):
+                archivo.seek(0)
+                raise serializers.ValidationError(
+                    'La imagen está dañada o no tiene un formato válido.'
+                )
+
+        archivo.seek(0)
+        return archivo
+
+    def get_url_descarga(self, obj):
+        return f'/api/usuarios/documentos/{obj.pk}/descargar/'
+    class Meta:
+        model = DocumentoVerificacion
+        fields = [
+                    'id',
+                    'tipo',
+                    'archivo',
+                    'url_descarga',
+                    'estado',
+                    'observacion',
+                    'fecha_subida',
+        ]
+
+        read_only_fields = [
+            'id',
+            'estado',
+            'observacion',
+            'fecha_subida',
+        ]
+
+class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
+    profesional_id = serializers.IntegerField(
+        source='perfil.id',
+        read_only=True
+    )
+    username = serializers.CharField(
+        source='perfil.usuario.username',
+        read_only=True
+    )
+    email = serializers.EmailField(
+        source='perfil.usuario.email',
+        read_only=True
+    )
+
+    url_descarga = serializers.SerializerMethodField()
+
+    def get_url_descarga(self, obj):
+        return f'/api/usuarios/documentos/{obj.pk}/descargar/'
+    class Meta:
+        model = DocumentoVerificacion
+        fields = [
+            'id',
+            'profesional_id',
+            'username',
+            'email',
+            'tipo',
+            'url_descarga',
+            'estado',
+            'observacion',
+            'fecha_subida',
+        ]
+
+        read_only_fields = [
+            'id',
+            'profesional_id',
+            'username',
+            'email',
+            'tipo',
+            'archivo',
+            'fecha_subida',
+        ]
+
+class MiPerfilSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        source='usuario.username',
+        read_only=True
+    )
+    email = serializers.EmailField(
+        source='usuario.email',
+        required=False
+    )
+    first_name = serializers.CharField(
+        source='usuario.first_name',
+        required=False,
+        allow_blank=True
+    )
+    last_name = serializers.CharField(
+        source='usuario.last_name',
+        required=False,
+        allow_blank=True
+    )
+
+    class Meta:
+        model = Perfil
+        fields = [
+            'username',
+            'email',
+            'first_name',
+            'last_name',
+            'rol',
+            'telefono',
+            'direccion',
+            'descripcion_profesional',
+            'experiencia_anos',
+            'estado_verificacion',
+            'estado_identidad',
+            'disponible',
+        ]
+
+        read_only_fields = [
+            'rol',
+            'estado_verificacion',
+            'estado_identidad',
+            'disponible',
+        ]
+
+    def update(self, instance, validated_data):
+        datos_usuario = validated_data.pop('usuario', {})
+
+        for campo, valor in datos_usuario.items():
+            setattr(instance.usuario, campo, valor)
+
+        if datos_usuario:
+            instance.usuario.save()
+
+        return super().update(instance, validated_data)
+class ProfesionalDisponibleSerializer(serializers.ModelSerializer):
+    profesional_id = serializers.IntegerField(
+        source='profesional.id',
+        read_only=True
+    )
+
+    username = serializers.CharField(
+        source='profesional.usuario.username',
+        read_only=True
+    )
+
+    descripcion_profesional = serializers.CharField(
+        source='profesional.descripcion_profesional',
+        read_only=True
+    )
+
+    experiencia_anos = serializers.IntegerField(
+        source='profesional.experiencia_anos',
+        read_only=True
+    )
+
+    class Meta:
+        model = ServicioProfesional
+        fields = [
+            'profesional_id',
+            'username',
+            'descripcion_profesional',
+            'experiencia_anos',
+            'precio',
+        ]
