@@ -11,13 +11,11 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 from pathlib import Path
 from datetime import timedelta
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / '.env')
-
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
@@ -86,6 +84,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'config.middleware.AdminMFAMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -218,6 +217,8 @@ MEDIA_ROOT = STORAGE_ROOT / 'media'
 PRIVATE_MEDIA_ROOT = (
     STORAGE_ROOT / 'private_media' / 'verificacion_profesionales'
 )
+
+PRIVATE_MEDIA_URL = None
 # Configuración de logs para producción (Railway)
 LOGGING = {
     'version': 1,

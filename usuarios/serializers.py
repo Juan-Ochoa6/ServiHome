@@ -2,9 +2,13 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
 from django.contrib.auth.models import User
-
 from .models import Perfil, DocumentoVerificacion
 from servicios.models import ServicioProfesional
+
+import os
+
+from PIL import Image
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 class RegistroUsuarioSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(
@@ -103,15 +107,14 @@ class RegistroUsuarioSerializer(serializers.ModelSerializer):
 
         return usuario
 class DocumentoVerificacionSerializer(serializers.ModelSerializer):
+    archivo = serializers.FileField(write_only=True)
+    url_descarga = serializers.SerializerMethodField()
 
     def validate_archivo(self, archivo):
-        extensiones_permitidas = ['.pdf', '.jpg', '.jpeg', '.png']
-        extensiones = archivo.name.lower()
+        extensiones_permitidas = {'.pdf', '.jpg', '.jpeg', '.png'}
+        extension = os.path.splitext(archivo.name)[1].lower()
 
-        if not any(
-            extensiones.endswith(ext)
-            for ext in extensiones_permitidas
-        ):
+        if extension not in extensiones_permitidas:
             raise serializers.ValidationError(
                 'Solo se permiten archivos PDF, JPG y PNG.'
             )
@@ -123,22 +126,53 @@ class DocumentoVerificacionSerializer(serializers.ModelSerializer):
                 'El archivo no puede superar los 5 MB.'
             )
 
+        contenido = archivo.read(8)
+        archivo.seek(0)
+
+        if extension == '.pdf':
+            if not contenido.startswith(b'%PDF-'):
+                raise serializers.ValidationError(
+                    'El archivo no tiene un formato PDF válido.'
+                )
+        else:
+            try:
+                imagen = Image.open(archivo)
+                imagen.verify()
+                archivo.seek(0)
+
+                formatos = {
+                    '.jpg': 'JPEG',
+                    '.jpeg': 'JPEG',
+                    '.png': 'PNG',
+                }
+
+                if imagen.format != formatos[extension]:
+                    raise serializers.ValidationError(
+                        'El contenido no coincide con la extensión del archivo.'
+                    )
+
+            except (OSError, DjangoValidationError):
+                archivo.seek(0)
+                raise serializers.ValidationError(
+                    'La imagen está dañada o no tiene un formato válido.'
+                )
+
+        archivo.seek(0)
         return archivo
-    archivo = serializers.FileField(write_only=True)
-    url_descarga = serializers.SerializerMethodField()
 
     def get_url_descarga(self, obj):
         return f'/api/usuarios/documentos/{obj.pk}/descargar/'
+
     class Meta:
         model = DocumentoVerificacion
         fields = [
-                    'id',
-                    'tipo',
-                    'archivo',
-                    'url_descarga',
-                    'estado',
-                    'observacion',
-                    'fecha_subida',
+            'id',
+            'tipo',
+            'archivo',
+            'url_descarga',
+            'estado',
+            'observacion',
+            'fecha_subida',
         ]
 
         read_only_fields = [
@@ -147,7 +181,6 @@ class DocumentoVerificacionSerializer(serializers.ModelSerializer):
             'observacion',
             'fecha_subida',
         ]
-
 class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
     profesional_id = serializers.IntegerField(
         source='perfil.id',
@@ -166,6 +199,7 @@ class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
 
     def get_url_descarga(self, obj):
         return f'/api/usuarios/documentos/{obj.pk}/descargar/'
+
     class Meta:
         model = DocumentoVerificacion
         fields = [
@@ -189,7 +223,6 @@ class AdminDocumentoVerificacionSerializer(serializers.ModelSerializer):
             'archivo',
             'fecha_subida',
         ]
-
 class MiPerfilSerializer(serializers.ModelSerializer):
     username = serializers.CharField(
         source='usuario.username',

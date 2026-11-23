@@ -1,38 +1,39 @@
-
 import base64
 import hashlib
 import secrets
+import os
+
 from datetime import datetime, timezone as datetime_timezone
 from io import BytesIO
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework import generics
-from .models import DocumentoVerificacion
-from .serializers import (
-    DocumentoVerificacionSerializer,
-    AdminDocumentoVerificacionSerializer,
-)
+
 import pyotp
-from servicios.models import ServicioProfesional
 import qrcode
-from rest_framework.exceptions import PermissionDenied
+
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import login as django_login
 from django.core import signing
 from django.core.exceptions import ImproperlyConfigured
 from django.core.signing import BadSignature, SignatureExpired
 from django.db import transaction
+from django.db.models import Q
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404, render, redirect
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
-from rest_framework import serializers, status
+
+from rest_framework import generics, serializers, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import (
     IsAuthenticated,
     AllowAny,
     IsAdminUser,
 )
 from rest_framework.response import Response
+
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.http import FileResponse
-from django.shortcuts import get_object_or_404
+
 from drf_spectacular.utils import (
     extend_schema,
     OpenApiResponse,
@@ -40,17 +41,25 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 
-from usuarios.models import DesafioLogin, CodigoRecuperacionMFA
+from servicios.models import ServicioProfesional
+
+from .models import (
+    Perfil,
+    DocumentoVerificacion,
+    DesafioLogin,
+    CodigoRecuperacionMFA,
+)
+
 from .serializers import (
     RegistroUsuarioSerializer,
+    DocumentoVerificacionSerializer,
+    AdminDocumentoVerificacionSerializer,
     MiPerfilSerializer,
     ProfesionalDisponibleSerializer,
 )
-from .models import Perfil
 
 
 User = get_user_model()
-
 
 # =========================================================
 # FUNCIONES AUXILIARES
@@ -170,6 +179,106 @@ def validar_codigo_totp_unico(perfil, codigo):
     except (AttributeError, ImproperlyConfigured, ValueError):
         return False
 
+
+def acceso_admin(request):
+    """Primer paso: validar contraseña de un administrador."""
+
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+
+        usuario = authenticate(
+            request,
+            username=username,
+            password=password
+        )
+
+        if (
+            not usuario
+            or not usuario.is_active
+            or not (usuario.is_staff or usuario.is_superuser)
+        ):
+            return render(request, 'admin/acceso.html', {
+                'paso': 'credenciales',
+                'error': 'Credenciales administrativas incorrectas.'
+            })
+
+        try:
+            perfil = usuario.perfil
+        except AttributeError:
+            return render(request, 'admin/acceso.html', {
+                'paso': 'credenciales',
+                'error': 'El administrador no tiene un perfil configurado.'
+            })
+
+        if not perfil.two_factor_enabled:
+            return render(request, 'admin/acceso.html', {
+                'paso': 'credenciales',
+                'error': 'Debes configurar MFA antes de acceder al panel.'
+            })
+
+        request.session['admin_mfa_pending_user_id'] = usuario.pk
+        request.session['admin_mfa_attempts'] = 0
+
+        return redirect('/admin/acceso/mfa/')
+
+    return render(request, 'admin/acceso.html', {
+        'paso': 'credenciales'
+    })
+
+
+def verificar_mfa_admin(request):
+    """Segundo paso: validar TOTP y crear la sesión administrativa."""
+
+    user_id = request.session.get('admin_mfa_pending_user_id')
+
+    if not user_id:
+        return redirect('/admin/acceso/')
+
+    Usuario = get_user_model()
+
+    usuario = Usuario.objects.filter(
+        pk=user_id,
+        is_active=True
+    ).filter(
+        Q(is_staff=True) | Q(is_superuser=True)
+    ).first()
+
+    if not usuario:
+        request.session.pop('admin_mfa_pending_user_id', None)
+        request.session.pop('admin_mfa_attempts', None)
+        return redirect('/admin/acceso/')
+
+    if request.method == 'POST':
+        codigo = request.POST.get('codigo', '').strip()
+        intentos = request.session.get('admin_mfa_attempts', 0)
+
+        if intentos >= 5:
+            request.session.pop('admin_mfa_pending_user_id', None)
+            request.session.pop('admin_mfa_attempts', None)
+            return redirect('/admin/acceso/')
+
+        if validar_codigo_totp_unico(usuario.perfil, codigo):
+            django_login(request, usuario)
+
+            request.session['admin_mfa_verified_user_id'] = usuario.pk
+
+            request.session.pop('admin_mfa_pending_user_id', None)
+            request.session.pop('admin_mfa_attempts', None)
+
+            return redirect('/admin/')
+
+        request.session['admin_mfa_attempts'] = intentos + 1
+
+        return render(request, 'admin/acceso.html', {
+            'paso': 'mfa',
+            'error': 'Código incorrecto o expirado.',
+            'intentos_restantes': 4 - intentos
+        })
+
+    return render(request, 'admin/acceso.html', {
+        'paso': 'mfa'
+    })
 
 def obtener_hash_challenge(challenge):
     return hashlib.sha256(
@@ -999,8 +1108,7 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
             raise PermissionDenied(
                 'Tu usuario no tiene un perfil configurado.'
             )
-        if perfil.rol == 'profesional':
-            exigir_profesional_aprobado(perfil)
+
         return DocumentoVerificacion.objects.filter(
             perfil=perfil
         ).order_by('-fecha_subida')
@@ -1014,8 +1122,7 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
             )
 
         tipo = serializer.validated_data['tipo']
-        if perfil.rol == 'profesional':
-            exigir_profesional_aprobado(perfil)
+
 
         if perfil.rol == 'cliente' and tipo != 'identidad':
             raise ValidationError(

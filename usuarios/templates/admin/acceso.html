@@ -1,0 +1,83 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso administrativo | ServiHome</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .contenedor {
+            background: white;
+            padding: 32px;
+            border-radius: 12px;
+            width: 340px;
+            box-shadow: 0 4px 18px rgba(0,0,0,.10);
+        }
+        h2 { text-align: center; color: #222; }
+        label { display: block; margin-top: 16px; }
+        input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 12px;
+            margin-top: 7px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 22px;
+            border: 0;
+            border-radius: 6px;
+            background: #2563eb;
+            color: white;
+            cursor: pointer;
+        }
+        .error { color: #b91c1c; margin-top: 15px; }
+    </style>
+</head>
+<body>
+    <div class="contenedor">
+        <h2>ServiHome</h2>
+
+        {% if paso == 'credenciales' %}
+            <h3>Acceso administrativo</h3>
+            <form method="post">
+                {% csrf_token %}
+                <label>Usuario</label>
+                <input type="text" name="username" autocomplete="username" required>
+
+                <label>Contraseña</label>
+                <input type="password" name="password" autocomplete="current-password" required>
+
+                <button type="submit">Continuar</button>
+            </form>
+        {% elif paso == 'mfa' %}
+            <h3>Verificación MFA</h3>
+            <p>Ingresa el código de seis dígitos de Microsoft Authenticator.</p>
+
+            <form method="post">
+                {% csrf_token %}
+                <label>Código de autenticación</label>
+                <input type="text" name="codigo" inputmode="numeric"
+                       pattern="[0-9]{6}" maxlength="6" required>
+
+                <button type="submit">Verificar código</button>
+            </form>
+        {% endif %}
+
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>
