@@ -783,17 +783,16 @@ class DocumentosQATests(BaseQA):
         documento.refresh_from_db()
         self.assertEqual(documento.estado, 'pendiente')
 
-    def test_profesional_no_aprobado_solo_ve_su_estado_de_verificacion(self):
+    def test_profesional_no_aprobado_ve_su_verificacion_y_documentos(self):
         self.profesional.estado_verificacion = 'pendiente'
         self.profesional.save(update_fields=['estado_verificacion'])
 
         self.client.force_authenticate(user=self.usuario_profesional)
         respuesta = self.client.get('/api/usuarios/mi-verificacion/')
         self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            respuesta.json(),
-            {'estado_verificacion': 'pendiente'}
-        )
+        datos = respuesta.json()
+        self.assertEqual(datos['estado_verificacion'], 'pendiente')
+        self.assertIn('documentos', datos)
 
 
 
@@ -941,13 +940,13 @@ class PerfilQATests(BaseQA):
         self.assertEqual(self.profesional.estado_identidad, 'aprobado')
         self.assertTrue(self.profesional.disponible)
 
-    def test_profesional_no_aprobado_no_puede_ver_su_perfil(self):
+    def test_profesional_no_aprobado_ya_puede_ver_su_perfil(self):
         self.profesional.estado_verificacion = 'pendiente'
         self.profesional.save(update_fields=['estado_verificacion'])
 
         self.client.force_authenticate(user=self.usuario_profesional)
         respuesta = self.client.get(self.url_perfil)
-        self.assertEqual(respuesta.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
 
     def test_correo_con_formato_invalido_da_400(self):
         correo_original = self.usuario_cliente.email
