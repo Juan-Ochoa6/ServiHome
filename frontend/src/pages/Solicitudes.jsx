@@ -55,17 +55,23 @@ function Solicitudes() {
 
   async function cambiarEstado(solicitud, estado, mensaje) {
     const esCancelacion = estado === 'cancelada';
+    const esRechazo = estado === 'rechazada';
+    const esAceptacion = estado === 'aceptada';
 
     const aceptado = await confirmar({
       titulo: esCancelacion
         ? 'Cancelar solicitud'
-        : '¿Rechazar solicitud?',
+        : esRechazo
+          ? 'Rechazar solicitud'
+          : 'Aceptar solicitud',
       mensaje,
       textoConfirmar: esCancelacion
         ? 'Sí, cancelar'
-        : 'Sí, rechazar',
+        : esRechazo
+          ? 'Sí, rechazar'
+          : 'Sí, aceptar',
       textoCancelar: 'Volver',
-      tipo: 'peligro',
+      tipo: esAceptacion ? 'info' : 'peligro',
     });
 
     if (!aceptado) return;
@@ -134,12 +140,21 @@ function Solicitudes() {
               const puedeCancelar =
                 esCliente && ESTADOS_CANCELABLES.includes(solicitud.estado);
               const puedeRechazar = !esCliente && solicitud.estado === 'pendiente';
+              const puedeAceptar =
+                !esCliente &&
+                solicitud.estado === 'pendiente' &&
+                solicitud.precio_acordado !== null &&
+                solicitud.precio_acordado !== undefined;
               const puedeReportar = esCliente && ESTADOS_CON_INCIDENTE.includes(solicitud.estado);
               const abiertaAhora = abierta === solicitud.id;
+              const tienePrecioAcordado = solicitud.precio_acordado !== null
+                && solicitud.precio_acordado !== undefined;
+              const puedeNegociar = solicitud.estado === 'pendiente'
+                && (!esCliente || !tienePrecioAcordado);
 
               let textoNegociacion = 'Ver historial de precios';
               if (abiertaAhora) textoNegociacion = 'Ocultar precios';
-              else if (solicitud.estado === 'pendiente') textoNegociacion = 'Negociar precio';
+              else if (puedeNegociar) textoNegociacion = 'Negociar precio';
 
               return (
                 <article className="tarjeta-solicitud" key={solicitud.id}>
@@ -209,6 +224,23 @@ function Solicitudes() {
                         </button>
                       )}
 
+                      {puedeAceptar && (
+                        <button
+                          type="button"
+                          className="boton-contactar"
+                          onClick={() =>
+                            cambiarEstado(
+                              solicitud,
+                              'aceptada',
+                              '¿Confirmas que deseas aceptar esta solicitud? Se generará un código de inicio para el cliente.',
+                            )
+                          }
+                          disabled={procesando === solicitud.id}
+                        >
+                          {procesando === solicitud.id ? 'Aceptando…' : 'Aceptar solicitud'}
+                        </button>
+                      )}
+
                       {puedeRechazar && (
                         <button
                           type="button"
@@ -229,7 +261,7 @@ function Solicitudes() {
 
                     {puedeReportar && <ReporteIncidente solicitud={solicitud} />}
 
-                    {abiertaAhora && (
+                    {abiertaAhora && (!esCliente || puedeNegociar) && (
                       <NegociacionPrecio
                         solicitud={solicitud}
                         miPerfilId={miPerfilId}

@@ -38,6 +38,7 @@ function NuevaSolicitud() {
   const { datos, cargando, error, recargar } = useCargar(listarOfertas);
 
   const [solicitud, setSolicitud] = useState(solicitudInicial);
+  const [aceptarPrecioPublicado, setAceptarPrecioPublicado] = useState(true);
   const [enRevision, setEnRevision] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [errorEnvio, setErrorEnvio] = useState('');
@@ -95,6 +96,7 @@ function NuevaSolicitud() {
         descripcion: solicitud.descripcion.trim(),
         direccion_servicio: solicitud.direccion.trim(),
         fecha_solicitada: new Date(solicitud.fecha).toISOString(),
+        aceptar_precio_publicado: aceptarPrecioPublicado,
       });
       navigate('/solicitudes');
     } catch (err) {
@@ -117,8 +119,42 @@ function NuevaSolicitud() {
             <dd>{oferta.profesional_nombre}</dd>
             <dt>Servicio</dt>
             <dd>{oferta.servicio_nombre}</dd>
-            <dt>Valor del servicio</dt>
-            <dd>{formatearPrecio(oferta.precio)}</dd>
+
+            <div className="seleccion-precio">
+              <p className="seleccion-precio-titulo">
+                ¿Qué deseas hacer con el precio publicado?
+              </p>
+
+              <label
+                className={`opcion-precio ${aceptarPrecioPublicado ? 'seleccionada' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="aceptarPrecio"
+                  checked={aceptarPrecioPublicado}
+                  onChange={() => setAceptarPrecioPublicado(true)}
+                />
+                <span className="opcion-precio-contenido">
+                  <strong>Aceptar precio publicado</strong>
+                  <small>{formatearPrecio(oferta.precio)}</small>
+                </span>
+              </label>
+
+              <label
+                className={`opcion-precio ${!aceptarPrecioPublicado ? 'seleccionada' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name="aceptarPrecio"
+                  checked={!aceptarPrecioPublicado}
+                  onChange={() => setAceptarPrecioPublicado(false)}
+                />
+                <span className="opcion-precio-contenido">
+                  <strong>Negociar precio posteriormente</strong>
+                  <small>Podrás acordar el valor con el profesional.</small>
+                </span>
+              </label>
+            </div>
             <dt>Descripción</dt>
             <dd>{solicitud.descripcion}</dd>
             <dt>Dirección</dt>

@@ -149,6 +149,77 @@ main { overflow: clip; }
 .resumen-solicitud { display: grid; grid-template-columns: 1fr; gap: 7px; margin: 24px 0; }
 .resumen-solicitud dt { margin-top: 9px; color: #68766c; font-size: .84rem; font-weight: 650; }
 .resumen-solicitud dd { margin: 0; color: #263b2e; line-height: 1.6; overflow-wrap: anywhere; }
+
+/* Opciones para aceptar o negociar el precio */
+.seleccion-precio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.seleccion-precio-titulo {
+  margin: 0 0 4px;
+  color: #263b2e;
+  font-size: .92rem;
+  font-weight: 700;
+}
+
+.opcion-precio {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid #d5ded8;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, box-shadow .2s;
+}
+
+.opcion-precio:hover {
+  border-color: #39845a;
+  background: #f8fbf8;
+}
+
+.opcion-precio.seleccionada {
+  border-color: #39845a;
+  background: #f0f7f1;
+  box-shadow: 0 0 0 2px #39845a18;
+}
+
+.opcion-precio input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  flex-shrink: 0;
+  accent-color: #39845a;
+  cursor: pointer;
+}
+
+.opcion-precio-contenido {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.opcion-precio-contenido strong {
+  color: #263b2e;
+  font-size: .94rem;
+}
+
+.opcion-precio-contenido small {
+  color: #68766c;
+  font-size: .85rem;
+  line-height: 1.5;
+}
+
+.opcion-precio:focus-within {
+  outline: 2px solid #39845a;
+  outline-offset: 2px;
+}
+
 .acciones-confirmacion { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
 .acciones-confirmacion > * { flex: 1; }
 
