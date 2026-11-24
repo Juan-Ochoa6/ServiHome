@@ -20,6 +20,7 @@ from .views import (
     ResenasProfesionalListAPIView,
     ReputacionProfesionalAPIView,
     PagoCreateAPIView,
+    PagoMercadoPagoCreateAPIView,
     MisPagosListAPIView,
     PagoEstadoAPIView,
     FinanzasResumenAPIView,
@@ -28,6 +29,7 @@ from .views import (
     IncidenteAdminDetailAPIView,
     FacturaPDFAPIView,
     EstadisticasGeneralesAPIView,
+    MercadoPagoWebhookAPIView
 )
 
 urlpatterns = [
@@ -186,5 +188,15 @@ urlpatterns = [
     'admin/estadisticas/',
     EstadisticasGeneralesAPIView.as_view(),
     name='admin-estadisticas'
+    ),
+        path(
+        'solicitudes/<int:pk>/pago/mercadopago/',
+        PagoMercadoPagoCreateAPIView.as_view(),
+        name='crear-pago-mercadopago'
+    ),
+    path(
+    'webhooks/mercadopago/',
+    MercadoPagoWebhookAPIView.as_view(),
+    name='webhook-mercadopago'
     ),
 ]

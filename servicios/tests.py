@@ -18,9 +18,14 @@ from servicios.models import (
     Pago,
     Incidente,
 )
-
-
+from unittest.mock import patch, Mock
+from django.test import override_settings
+import hashlib
+import hmac
 class SolicitudPermisosTests(APITestCase):
+
+ 
+
 
     def setUp(self):
         # Usuarios
@@ -1072,6 +1077,7 @@ class ResenasTests(APITestCase):
 
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(len(respuesta.data), 1)
+
 class PagosTests(APITestCase):
 
     def setUp(self):
@@ -1140,6 +1146,128 @@ class PagosTests(APITestCase):
         )
 
         self.url_mis_pagos = '/api/mis-pagos/'
+    @override_settings(MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN')
+    @patch('servicios.views.mercadopago.SDK')
+    def test_cliente_puede_crear_orden_mercadopago(
+        self,
+        mock_sdk
+    ):
+
+        respuesta_mp = Mock()
+        respuesta_mp.is_success = True
+        respuesta_mp.get.return_value = {
+            'id': 'ORDEN-TEST-123',
+            'checkout_url': 'https://www.mercadopago.com/checkout/test',
+            'status': 'created'
+        }
+
+        mock_sdk.return_value.order.return_value.create.return_value = (
+            respuesta_mp
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        respuesta = self.client.post(
+            f'/api/solicitudes/{self.solicitud.pk}/pago/mercadopago/'
+        )
+
+        self.assertEqual(
+            respuesta.status_code,
+            status.HTTP_201_CREATED
+        )
+
+        self.assertEqual(
+            respuesta.data['order_id'],
+            'ORDEN-TEST-123'
+        )
+
+        pago = Pago.objects.get(
+            solicitud=self.solicitud
+        )
+
+        self.assertEqual(pago.metodo, 'pasarela')
+        self.assertEqual(pago.estado, 'pendiente')
+        self.assertEqual(
+            pago.mercadopago_order_id,
+            'ORDEN-TEST-123'
+        )
+        self.assertTrue(pago.mercadopago_idempotency_key)
+        self.assertEqual(
+            pago.mercadopago_checkout_url,
+            'https://www.mercadopago.com/checkout/test'
+        )
+
+        mock_sdk.return_value.order.return_value.create.assert_called_once()
+    @override_settings(MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN')
+    @patch('servicios.views.mercadopago.SDK')
+    def test_reintento_reutiliza_checkout_existente(
+        self,
+        mock_sdk
+    ):
+
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='pasarela',
+            estado='pendiente',
+            mercadopago_checkout_url='https://www.mercadopago.com/checkout/existente'
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        respuesta = self.client.post(
+            f'/api/solicitudes/{self.solicitud.pk}/pago/mercadopago/'
+        )
+
+        self.assertEqual(respuesta.status_code, status.HTTP_200_OK)
+
+        self.assertEqual(
+            respuesta.data['checkout_url'],
+            pago.mercadopago_checkout_url
+        )
+
+        mock_sdk.assert_not_called()
+
+
+    @override_settings(MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN')
+    @patch('servicios.views.mercadopago.SDK')
+    def test_error_mercadopago_devuelve_502(
+        self,
+        mock_sdk
+    ):
+
+        respuesta_mp = Mock()
+        respuesta_mp.is_success = False
+        respuesta_mp.status_code = 400
+
+        mock_sdk.return_value.order.return_value.create.return_value = (
+            respuesta_mp
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        respuesta = self.client.post(
+            f'/api/solicitudes/{self.solicitud.pk}/pago/mercadopago/'
+        )
+
+        self.assertEqual(
+            respuesta.status_code,
+            status.HTTP_502_BAD_GATEWAY
+        )
+
+        pago = Pago.objects.get(
+            solicitud=self.solicitud
+        )
+
+        self.assertEqual(pago.metodo, 'pasarela')
+        self.assertEqual(pago.estado, 'pendiente')
+        self.assertIsNotNone(pago.mercadopago_idempotency_key)
 
     def test_cliente_puede_registrar_pago(self):
 
@@ -1295,6 +1423,30 @@ class PagosTests(APITestCase):
         )
 
         self.assertEqual(respuesta.status_code, 403)
+    def test_administrador_no_puede_confirmar_pago_por_pasarela(self):
+
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='pasarela'
+        )
+
+        self.client.force_authenticate(
+            user=self.usuario_admin
+        )
+
+        respuesta = self.client.patch(
+            f'/api/pagos/{pago.pk}/estado/',
+            {'estado': 'pagado'},
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 400)
+
+        pago.refresh_from_db()
+
+        self.assertEqual(pago.estado, 'pendiente')
+        self.assertIsNone(pago.fecha_pago)    
 
     def test_administrador_puede_confirmar_pago(self):
 
@@ -1385,6 +1537,215 @@ class PagosTests(APITestCase):
             respuesta.data[0]['estado'],
             'pendiente'
         )
+
+    def _crear_firma_webhook(self, data_id, request_id, secret, ts='123456'):
+        manifiesto = f'id:{data_id};request-id:{request_id};ts:{ts};'
+        firma = hmac.new(
+            secret.encode(),
+            manifiesto.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        return f'ts={ts},v1={firma}'
+
+    @override_settings(
+        MERCADOPAGO_WEBHOOK_SECRET='TEST-WEBHOOK-SECRET',
+        MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN'
+    )
+    @patch('servicios.views.mercadopago.SDK')
+    def test_webhook_pago_aprobado_actualiza_pago(
+        self,
+        mock_sdk
+    ):
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='pasarela',
+            estado='pendiente',
+            mercadopago_order_id='ORDEN-WEBHOOK-123'
+        )
+
+        respuesta_mp = Mock()
+        respuesta_mp.is_success = True
+        respuesta_mp.get.return_value = {
+            'id': 'ORDEN-WEBHOOK-123',
+            'external_reference': f'servihome_pago_{pago.pk}',
+            'total_amount': '100000.00',
+            'status': 'processed',
+            'status_detail': 'accredited'
+        }
+
+        mock_sdk.return_value.order.return_value.get.return_value = (
+            respuesta_mp
+        )
+
+        request_id = 'request-webhook-123'
+        secret = 'TEST-WEBHOOK-SECRET'
+        firma = self._crear_firma_webhook(
+            'ORDEN-WEBHOOK-123',
+            request_id,
+            secret
+        )
+
+        respuesta = self.client.post(
+            '/api/webhooks/mercadopago/?type=order&data.id=ORDEN-WEBHOOK-123',
+            {},
+            format='json',
+            HTTP_X_REQUEST_ID=request_id,
+            HTTP_X_SIGNATURE=firma
+        )
+
+        pago.refresh_from_db()
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(pago.estado, 'pagado')
+        self.assertIsNotNone(pago.fecha_pago)
+        self.assertEqual(pago.mercadopago_status, 'processed')
+
+    @override_settings(
+        MERCADOPAGO_WEBHOOK_SECRET='TEST-WEBHOOK-SECRET',
+        MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN'
+    )
+    @patch('servicios.views.mercadopago.SDK')
+    def test_webhook_rechaza_firma_invalida(
+        self,
+        mock_sdk
+    ):
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='pasarela',
+            estado='pendiente',
+            mercadopago_order_id='ORDEN-WEBHOOK-INVALIDA'
+        )
+
+        respuesta = self.client.post(
+            '/api/webhooks/mercadopago/?type=order&data.id=ORDEN-WEBHOOK-INVALIDA',
+            {},
+            format='json',
+            HTTP_X_REQUEST_ID='request-invalido',
+            HTTP_X_SIGNATURE='ts=123456,v1=firma-falsa'
+        )
+
+        pago.refresh_from_db()
+
+        self.assertEqual(respuesta.status_code, 401)
+        self.assertEqual(pago.estado, 'pendiente')
+        mock_sdk.assert_not_called()
+
+    @override_settings(
+        MERCADOPAGO_WEBHOOK_SECRET='TEST-WEBHOOK-SECRET',
+        MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN'
+    )
+    @patch('servicios.views.mercadopago.SDK')
+    def test_webhook_rechaza_monto_diferente(
+        self,
+        mock_sdk
+    ):
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='pasarela',
+            estado='pendiente',
+            mercadopago_order_id='ORDEN-WEBHOOK-MONTO'
+        )
+
+        respuesta_mp = Mock()
+        respuesta_mp.is_success = True
+        respuesta_mp.get.return_value = {
+            'id': 'ORDEN-WEBHOOK-MONTO',
+            'external_reference': f'servihome_pago_{pago.pk}',
+            'total_amount': '90000.00',
+            'status': 'processed',
+            'status_detail': 'accredited'
+        }
+
+        mock_sdk.return_value.order.return_value.get.return_value = (
+            respuesta_mp
+        )
+
+        request_id = 'request-monto'
+        secret = 'TEST-WEBHOOK-SECRET'
+        firma = self._crear_firma_webhook(
+            'ORDEN-WEBHOOK-MONTO',
+            request_id,
+            secret
+        )
+
+        respuesta = self.client.post(
+            '/api/webhooks/mercadopago/?type=order&data.id=ORDEN-WEBHOOK-MONTO',
+            {},
+            format='json',
+            HTTP_X_REQUEST_ID=request_id,
+            HTTP_X_SIGNATURE=firma
+        )
+
+        pago.refresh_from_db()
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(pago.estado, 'pendiente')
+
+    @override_settings(
+        MERCADOPAGO_WEBHOOK_SECRET='TEST-WEBHOOK-SECRET',
+        MERCADOPAGO_ACCESS_TOKEN='TEST-ACCESS-TOKEN'
+    )
+    @patch('servicios.views.mercadopago.SDK')
+    def test_webhook_repetido_no_duplica_pago(
+        self,
+        mock_sdk
+    ):
+        pago = Pago.objects.create(
+            solicitud=self.solicitud,
+            monto_total=Decimal('100000.00'),
+            metodo='pasarela',
+            estado='pendiente',
+            mercadopago_order_id='ORDEN-WEBHOOK-REPETIDO'
+        )
+
+        respuesta_mp = Mock()
+        respuesta_mp.is_success = True
+        respuesta_mp.get.return_value = {
+            'id': 'ORDEN-WEBHOOK-REPETIDO',
+            'external_reference': f'servihome_pago_{pago.pk}',
+            'total_amount': '100000.00',
+            'status': 'processed',
+            'status_detail': 'accredited'
+        }
+
+        mock_sdk.return_value.order.return_value.get.return_value = (
+            respuesta_mp
+        )
+
+        request_id = 'request-repetido'
+        secret = 'TEST-WEBHOOK-SECRET'
+        firma = self._crear_firma_webhook(
+            'ORDEN-WEBHOOK-REPETIDO',
+            request_id,
+            secret
+        )
+
+        url = (
+            '/api/webhooks/mercadopago/'
+            '?type=order&data.id=ORDEN-WEBHOOK-REPETIDO'
+        )
+
+        for _ in range(2):
+            respuesta = self.client.post(
+                url,
+                {},
+                format='json',
+                HTTP_X_REQUEST_ID=request_id,
+                HTTP_X_SIGNATURE=firma
+            )
+            self.assertEqual(respuesta.status_code, 200)
+
+        pago.refresh_from_db()
+
+        self.assertEqual(pago.estado, 'pagado')
+        self.assertIsNotNone(pago.fecha_pago)
+
+
+
 class FinanzasTests(APITestCase):
 
     def setUp(self):

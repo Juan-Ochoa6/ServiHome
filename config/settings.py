@@ -249,3 +249,15 @@ LOGGING = {
         },
     },
 }
+# Configuración de Mercado Pago
+MERCADOPAGO_ACCESS_TOKEN = os.getenv('MERCADOPAGO_ACCESS_TOKEN', '')
+MERCADOPAGO_WEBHOOK_SECRET = os.getenv('MERCADOPAGO_WEBHOOK_SECRET', '')
+FRONTEND_URL = os.getenv(
+    'FRONTEND_URL',
+    'https://www.servihome.com.co'
+).rstrip('/')
+
+BACKEND_URL = os.getenv(
+    'BACKEND_URL',
+    'https://api.servihome.com.co'
+).rstrip('/')

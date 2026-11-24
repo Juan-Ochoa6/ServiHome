@@ -33,6 +33,9 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+import hashlib
+import hmac
+from decimal import Decimal
 from django.db.models.functions import (
     TruncDate,
     TruncWeek,
@@ -69,6 +72,10 @@ from .serializers import (
     IncidenteSerializer,
     IncidenteAdminSerializer,
 )
+import mercadopago
+import uuid
+from django.conf import settings
+
 def exigir_profesional_aprobado(perfil):
     if (
         perfil.rol == 'profesional'
@@ -1258,6 +1265,343 @@ class PagoCreateAPIView(generics.CreateAPIView):
             monto_total=solicitud.precio_acordado
         )
 
+class PagoMercadoPagoCreateAPIView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+
+        perfil = get_object_or_404(
+            Perfil,
+            usuario=request.user
+        )
+
+        if perfil.rol != 'cliente':
+            raise PermissionDenied(
+                'Solo los clientes pueden iniciar pagos.'
+            )
+
+        if not settings.MERCADOPAGO_ACCESS_TOKEN:
+            return Response(
+                {'error': 'La pasarela de pagos no está configurada.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        with transaction.atomic():
+
+            solicitud = get_object_or_404(
+                SolicitudServicio.objects.select_for_update(),
+                pk=pk
+            )
+
+            if solicitud.cliente_id != perfil.id:
+                raise PermissionDenied(
+                    'Esta solicitud no te pertenece.'
+                )
+
+            if solicitud.estado != 'completada':
+                raise ValidationError(
+                    'El servicio debe estar completado.'
+                )
+
+            if not solicitud.precio_acordado:
+                raise ValidationError(
+                    'La solicitud no tiene un precio acordado.'
+                )
+
+            pago = Pago.objects.filter(
+                solicitud=solicitud
+            ).first()
+
+            if pago:
+
+                if pago.metodo != 'pasarela':
+                    raise ValidationError(
+                        'Esta solicitud ya tiene otro método de pago.'
+                    )
+
+                if pago.estado != 'pendiente':
+                    raise ValidationError(
+                        'Este pago ya no está pendiente.'
+                    )
+
+                if pago.mercadopago_checkout_url:
+                    return Response({
+                        'checkout_url': pago.mercadopago_checkout_url,
+                        'pago_id': pago.id
+                    })
+
+                if not pago.mercadopago_idempotency_key:
+                    pago.mercadopago_idempotency_key = uuid.uuid4()
+                    pago.save(
+                        update_fields=['mercadopago_idempotency_key']
+                    )
+
+            else:
+
+                pago = Pago.objects.create(
+                    solicitud=solicitud,
+                    monto_total=solicitud.precio_acordado,
+                    metodo='pasarela',
+                    estado='pendiente',
+                    mercadopago_idempotency_key=uuid.uuid4()
+                )
+
+        try:
+
+            sdk = mercadopago.SDK(
+                settings.MERCADOPAGO_ACCESS_TOKEN
+            )
+
+            request_options = mercadopago.config.RequestOptions(
+                custom_headers={
+                    'x-idempotency-key': str(
+                        pago.mercadopago_idempotency_key
+                    )
+                }
+            )
+
+            monto = f'{pago.monto_total:.2f}'
+
+            order_data = {
+                'type': 'online',
+                'processing_mode': 'manual',
+                'total_amount': monto,
+                'external_reference': f'servihome_pago_{pago.pk}',
+                'description': solicitud.servicio.nombre,
+                'payer': {
+                    'email': solicitud.cliente.usuario.email
+                },
+                'items': [{
+                    'title': solicitud.servicio.nombre,
+                    'quantity': 1,
+                    'unit_price': monto
+                }],
+                'config': {
+                    'online': {
+                        'success_url': (
+                            f'{settings.FRONTEND_URL}/pago/exitoso'
+                        ),
+                        'pending_url': (
+                            f'{settings.FRONTEND_URL}/pago/pendiente'
+                        ),
+                        'failure_url': (
+                            f'{settings.FRONTEND_URL}/pago/fallido'
+                        ),
+                        'auto_return': 'approved'
+                    }
+                }
+            }
+
+            respuesta = sdk.order().create(
+                order_data,
+                request_options
+            )
+
+            if not respuesta.is_success:
+                return Response(
+                    {
+                        'error': 'No fue posible crear la orden de pago.',
+                        'codigo': respuesta.status_code
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+
+            datos = respuesta.get('response', {})
+
+            order_id = datos.get('id')
+            checkout_url = datos.get('checkout_url')
+
+            if not order_id or not checkout_url:
+                return Response(
+                    {'error': 'Mercado Pago no devolvió los datos de la orden.'},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+
+            pago.mercadopago_order_id = order_id
+            pago.mercadopago_checkout_url = checkout_url
+            pago.mercadopago_status = datos.get('status', 'created')
+
+            pago.save(update_fields=[
+                'mercadopago_order_id',
+                'mercadopago_checkout_url',
+                'mercadopago_status'
+            ])
+
+            return Response({
+                'pago_id': pago.id,
+                'order_id': order_id,
+                'checkout_url': checkout_url
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception:
+            return Response(
+                {'error': 'Error al comunicarse con Mercado Pago.'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+
+
+class MercadoPagoWebhookAPIView(APIView):
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+
+        secret = settings.MERCADOPAGO_WEBHOOK_SECRET
+
+        if not secret:
+            return Response(
+                {'error': 'Webhook no configurado.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data_id = request.query_params.get('data.id')
+        request_id = request.headers.get('x-request-id')
+        signature = request.headers.get('x-signature', '')
+
+        if not data_id or not request_id or not signature:
+            return Response(
+                {'error': 'Notificación incompleta.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        partes = {}
+
+        for parte in signature.split(','):
+            clave, separador, valor = parte.strip().partition('=')
+
+            if separador:
+                partes[clave] = valor
+
+        ts = partes.get('ts')
+        firma_recibida = partes.get('v1')
+
+        if not ts or not firma_recibida:
+            return Response(
+                {'error': 'Firma inválida.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        manifiesto = (
+            f'id:{data_id};'
+            f'request-id:{request_id};'
+            f'ts:{ts};'
+        )
+
+        firma_calculada = hmac.new(
+            secret.encode(),
+            manifiesto.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(
+            firma_calculada,
+            firma_recibida
+        ):
+            return Response(
+                {'error': 'Firma no válida.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if request.query_params.get('type') != 'order':
+            return Response({'mensaje': 'Evento ignorado.'})
+
+        try:
+            sdk = mercadopago.SDK(
+                settings.MERCADOPAGO_ACCESS_TOKEN
+            )
+
+            respuesta = sdk.order().get(data_id)
+
+            if not respuesta.is_success:
+                return Response(
+                    {'error': 'No se pudo consultar la orden.'},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+
+            orden = respuesta.get('response', {})
+
+            if str(orden.get('id')) != str(data_id):
+                return Response(
+                    {'error': 'La orden consultada no coincide.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            referencia = orden.get('external_reference', '')
+
+            if not referencia.startswith('servihome_pago_'):
+                return Response({'mensaje': 'Orden ignorada.'})
+
+            pago_id = referencia.replace(
+                'servihome_pago_', '',
+                1
+            )
+
+            with transaction.atomic():
+
+                pago = Pago.objects.select_for_update().filter(
+                    pk=pago_id,
+                    mercadopago_order_id=data_id,
+                    metodo='pasarela'
+                ).first()
+
+                if not pago:
+                    return Response({'mensaje': 'Pago no encontrado.'})
+
+                if referencia != f'servihome_pago_{pago.pk}':
+                    return Response(
+                        {'error': 'Referencia no válida.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                monto_orden = Decimal(
+                    str(orden.get('total_amount', '0'))
+                ).quantize(Decimal('0.01'))
+
+                monto_pago = pago.monto_total.quantize(
+                    Decimal('0.01')
+                )
+
+                if monto_orden != monto_pago:
+                    return Response(
+                        {'error': 'El monto de la orden no coincide.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                estado_mp = orden.get('status', '')
+                detalle_mp = orden.get('status_detail', '')
+
+                pago.mercadopago_status = estado_mp
+
+                if estado_mp == 'refunded':
+                    pago.estado = 'reembolsado'
+
+                elif (
+                    estado_mp == 'processed'
+                    and detalle_mp == 'accredited'
+                ):
+                    pago.estado = 'pagado'
+
+                    if not pago.fecha_pago:
+                        pago.fecha_pago = timezone.now()
+
+                elif estado_mp in ('failed', 'canceled'):
+                    if pago.estado == 'pendiente':
+                        pago.estado = 'fallido'
+
+                pago.save(update_fields=[
+                    'estado',
+                    'fecha_pago',
+                    'mercadopago_status'
+                ])
+
+            return Response({'mensaje': 'Notificación procesada.'})
+
+        except Exception:
+            return Response(
+                {'error': 'Error procesando la notificación.'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
 
 class MisPagosListAPIView(generics.ListAPIView):
 
@@ -1320,6 +1664,12 @@ class PagoEstadoAPIView(APIView):
         if nuevo_estado not in transiciones.get(pago.estado, []):
             raise ValidationError(
                 'La transición de estado no está permitida.'
+            )
+
+        if pago.metodo == 'pasarela' and nuevo_estado == 'pagado':
+            raise ValidationError(
+                'Los pagos por pasarela solo pueden confirmarse mediante '
+                'la notificación verificada de Mercado Pago.'
             )
 
         pago.estado = nuevo_estado

@@ -390,6 +390,27 @@ class Pago(models.Model):
         max_length=150,
         blank=True
     )
+    mercadopago_order_id = models.CharField(
+        max_length=100,
+        unique=True,
+        null=True,
+        blank=True
+    )
+    mercadopago_idempotency_key = models.UUIDField(
+    unique=True,
+    null=True,
+    blank=True
+    )
+
+    mercadopago_checkout_url = models.URLField(
+        max_length=500,
+        blank=True
+    )
+
+    mercadopago_status = models.CharField(
+        max_length=50,
+        blank=True
+    )
     comprobante = models.FileField(
         storage=AlmacenamientoComprobantesPrivados(),
         upload_to='pagos/',

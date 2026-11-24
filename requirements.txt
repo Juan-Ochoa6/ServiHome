@@ -19,3 +19,5 @@ python-dotenv==1.2.4
 reportlab==5.1.0
 
 gunicorn
+
+mercadopago==3.6.1
