@@ -38,7 +38,7 @@ function MiCuenta() {
           />
         )}
 
-        {esProfesional && <PanelVerificacion />}
+        <PanelVerificacion esProfesional={esProfesional} />
       </div>
     </section>
   );

@@ -37,7 +37,7 @@ function TarjetaDocumento({ documento, ocupado, onResolver }) {
       </div>
 
       <dl className="datos-panel">
-        <dt>Profesional</dt>
+        <dt>Usuario</dt>
         <dd>{documento.username}</dd>
         <dt>Correo</dt>
         <dd>{documento.email || '—'}</dd>
@@ -147,7 +147,7 @@ function Panel() {
     let confirmacion = `¿${verbo} el documento "${tipo}" de ${documento.username}?`;
 
     if (documento.tipo === 'identidad') {
-      confirmacion += ` Esto ${estado === 'aprobado' ? 'aprueba' : 'rechaza'} la identidad del profesional.`;
+      confirmacion += ` Esto ${estado === 'aprobado' ? 'aprueba' : 'rechaza'} la identidad del usuario.`;
     }
 
     ejecutar(

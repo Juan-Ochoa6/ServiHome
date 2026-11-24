@@ -560,7 +560,40 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
 
 .estado-verificacion-no_aplica { background: #eceff1; color: #56645d; }
 
-.campo-formulario input[type="file"] { padding: 8px; }
+.campo-formulario input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed #a9cbb3;
+  border-radius: 12px;
+  background: #f5faf6;
+  color: #56645d;
+  cursor: pointer;
+  font-size: .9rem;
+  transition: border-color .2s, background .2s;
+}
+
+.campo-formulario input[type="file"]::file-selector-button {
+  margin-right: 12px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 9px;
+  background: #e3f4e7;
+  color: #23784f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.campo-formulario input[type="file"]::file-selector-button:hover {
+  background: #23784f;
+  color: #fff;
+}
+
+.campo-formulario input[type="file"]:focus-visible {
+  outline: 3px solid #91cba3;
+  outline-offset: 3px;
+}
 
 .filtro-panel { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
 .filtro-panel label { color: #24392b; font-size: .9rem; font-weight: 700; }

@@ -65,10 +65,10 @@ function PagoSolicitud({ solicitud, pago, esCliente, onCambio }) {
 
         {AVISO_POR_ESTADO[pago.estado] && <p>{AVISO_POR_ESTADO[pago.estado]}</p>}
 
-        {pago.estado === 'pagado' && esCliente && (
+        {pago.estado === 'pagado' && (
           <div className="solicitud-acciones">
             <BotonArchivo ruta={`/api/pagos/${pago.id}/factura/`} className="boton-secundario">
-              Descargar comprobante
+              Descargar factura PDF
             </BotonArchivo>
           </div>
         )}
