@@ -1376,10 +1376,18 @@ class FacturaPDFAPIView(APIView):
                         'No tienes permiso para consultar esta factura.'
                     )
 
+            elif perfil.rol == 'profesional':
+                if pago.solicitud.profesional_id != perfil.id:
+                    raise PermissionDenied(
+                        'No tienes permiso para consultar esta factura.'
+                    )
+
             else:
                 raise PermissionDenied(
                     'No tienes permiso para descargar esta factura.'
                 )
+
+
 
         if pago.estado != 'pagado':
             raise ValidationError(

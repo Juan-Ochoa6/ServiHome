@@ -1751,6 +1751,7 @@ class IncidentesTests(APITestCase):
             'Incidente revisado y resuelto.'
         )
 
+
 class FacturasPDFTests(APITestCase):
 
     def setUp(self):
@@ -1769,7 +1770,6 @@ class FacturasPDFTests(APITestCase):
             password='ClaveProfesional123!'
         )
 
-        # Se crea como administrador sin Perfil asociado.
         self.usuario_admin = User.objects.create_user(
             username='admin_factura',
             password='ClaveAdmin123!',
@@ -1853,14 +1853,23 @@ class FacturasPDFTests(APITestCase):
 
         self.assertEqual(respuesta.status_code, 403)
 
-    def test_profesional_no_puede_descargar_factura(self):
+    def test_profesional_puede_descargar_su_factura(self):
         self.client.force_authenticate(
             user=self.usuario_profesional
         )
 
         respuesta = self.client.get(self.url)
 
-        self.assertEqual(respuesta.status_code, 403)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(
+            respuesta['Content-Type'],
+            'application/pdf'
+        )
+        self.assertIn(
+            'attachment;',
+            respuesta['Content-Disposition']
+        )
+        self.assertTrue(respuesta.content.startswith(b'%PDF'))
 
     def test_administrador_sin_perfil_puede_descargar_factura(self):
         self.client.force_authenticate(
