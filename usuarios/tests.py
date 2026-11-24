@@ -1466,3 +1466,220 @@ class DocumentoVerificacionDescargaTests(TestCase):
         respuesta = self.client.get(self.url)
 
         self.assertEqual(respuesta.status_code, 401)
+
+class DocumentosClientesTests(TestCase):
+
+    def setUp(self):
+        self.api = APIClient()
+
+        self.usuario_cliente = User.objects.create_user(
+            username='cliente_documentos',
+            email='cliente_documentos@test.com',
+            password='ClaveCliente123!'
+        )
+
+        self.usuario_otro = User.objects.create_user(
+            username='otro_cliente_documentos',
+            password='ClaveOtro123!'
+        )
+
+        self.usuario_admin = User.objects.create_user(
+            username='admin_documentos',
+            password='ClaveAdmin123!',
+            is_staff=True
+        )
+
+        self.perfil = self.usuario_cliente.perfil
+        self.perfil.rol = 'cliente'
+        self.perfil.save(update_fields=['rol'])
+
+        self.url_mis_documentos = (
+            '/api/usuarios/mis-documentos/'
+        )
+
+        self.url_admin_documentos = (
+            '/api/usuarios/admin/documentos/'
+        )
+
+    def crear_pdf(self):
+        return SimpleUploadedFile(
+            'cedula_prueba.pdf',
+            b'%PDF-1.4 contenido de prueba',
+            content_type='application/pdf'
+        )
+
+    def test_cliente_puede_subir_documento_identidad(self):
+        self.api.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        respuesta = self.api.post(
+            self.url_mis_documentos,
+            {
+                'tipo': 'identidad',
+                'archivo': self.crear_pdf()
+            },
+            format='multipart'
+        )
+
+        self.assertEqual(respuesta.status_code, 201)
+
+        documento = DocumentoVerificacion.objects.get(
+            perfil=self.perfil,
+            tipo='identidad'
+        )
+
+        self.assertEqual(documento.estado, 'pendiente')
+
+    def test_cliente_no_puede_subir_documentos_profesionales(self):
+        self.api.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        for tipo in ['experiencia', 'acreditacion']:
+            respuesta = self.api.post(
+                self.url_mis_documentos,
+                {
+                    'tipo': tipo,
+                    'archivo': self.crear_pdf()
+                },
+                format='multipart'
+            )
+
+            self.assertEqual(
+                respuesta.status_code,
+                400
+            )
+    def test_cliente_solo_puede_ver_sus_documentos(self):
+        documento_propio = DocumentoVerificacion.objects.create(
+            perfil=self.perfil,
+            tipo='identidad',
+            archivo=self.crear_pdf()
+        )
+
+        documento_ajeno = DocumentoVerificacion.objects.create(
+            perfil=self.usuario_otro.perfil,
+            tipo='identidad',
+            archivo=self.crear_pdf()
+        )
+
+        self.api.force_authenticate(
+            user=self.usuario_cliente
+        )
+
+        respuesta = self.api.get(
+            self.url_mis_documentos
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        contenido = respuesta.data
+
+        if isinstance(contenido, dict):
+            contenido = contenido.get('results', [])
+
+        ids = [item['id'] for item in contenido]
+
+        self.assertIn(documento_propio.pk, ids)
+        self.assertNotIn(documento_ajeno.pk, ids)
+
+    def test_administrador_puede_listar_documentos_de_clientes(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.perfil,
+            tipo='identidad',
+            archivo=self.crear_pdf()
+        )
+
+        self.api.force_authenticate(
+            user=self.usuario_admin
+        )
+
+        respuesta = self.api.get(
+            self.url_admin_documentos
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        contenido = respuesta.data
+
+        if isinstance(contenido, dict):
+            contenido = contenido.get(
+                'results',
+                []
+            )
+
+        ids = [item['id'] for item in contenido]
+
+        self.assertIn(documento.pk, ids)
+
+    def test_admin_aprueba_identidad_cliente_sin_alterar_otros_estados(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.perfil,
+            tipo='identidad',
+            archivo=self.crear_pdf()
+        )
+
+        self.api.force_authenticate(
+            user=self.usuario_admin
+        )
+
+        respuesta = self.api.patch(
+            f'/api/usuarios/admin/documentos/{documento.pk}/',
+            {
+                'estado': 'aprobado',
+                'observacion': 'Documento validado'
+            },
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil.refresh_from_db()
+        documento.refresh_from_db()
+
+        self.assertEqual(documento.estado, 'aprobado')
+        self.assertEqual(
+            self.perfil.estado_identidad,
+            'aprobado'
+        )
+        self.assertEqual(
+            self.perfil.estado_verificacion,
+            'no_aplica'
+        )
+        self.assertTrue(self.perfil.disponible)
+
+    def test_admin_rechaza_identidad_cliente(self):
+        documento = DocumentoVerificacion.objects.create(
+            perfil=self.perfil,
+            tipo='identidad',
+            archivo=self.crear_pdf()
+        )
+
+        self.api.force_authenticate(
+            user=self.usuario_admin
+        )
+
+        respuesta = self.api.patch(
+            f'/api/usuarios/admin/documentos/{documento.pk}/',
+            {
+                'estado': 'rechazado',
+                'observacion': 'Documento ilegible'
+            },
+            format='json'
+        )
+
+        self.assertEqual(respuesta.status_code, 200)
+
+        self.perfil.refresh_from_db()
+        documento.refresh_from_db()
+
+        self.assertEqual(documento.estado, 'rechazado')
+        self.assertEqual(
+            self.perfil.estado_identidad,
+            'rechazado'
+        )
+        self.assertEqual(
+            self.perfil.estado_verificacion,
+            'no_aplica'
+        )
+        self.assertTrue(self.perfil.disponible)
