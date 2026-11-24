@@ -9,11 +9,13 @@ const MIS_SERVICIOS = { ruta: '/mis-servicios', texto: 'Mis servicios' };
 const PORTAFOLIO = { ruta: '/mi-portafolio', texto: 'Portafolio' };
 const MI_CUENTA = { ruta: '/mi-cuenta', texto: 'Mi cuenta' };
 const PANEL = { ruta: '/panel', texto: 'Panel' };
+const PANEL_FINANZAS = { ruta: '/finanzas', texto: 'Panel financiero' };
 
 const ENLACES_POR_ROL = {
   cliente: [INICIO, SERVICIOS, PROFESIONALES, SOLICITUDES, MI_CUENTA],
   profesional: [INICIO, SOLICITUDES, MIS_SERVICIOS, PORTAFOLIO, MI_CUENTA],
   administrador: [INICIO, SERVICIOS, PROFESIONALES, PANEL],
+  finanzas: [INICIO, PANEL_FINANZAS],
 };
 
 const ENLACES_PUBLICOS = [INICIO, SERVICIOS, PROFESIONALES, SOLICITUDES];
@@ -22,6 +24,7 @@ const ETIQUETAS_ROL = {
   cliente: 'Cliente',
   profesional: 'Profesional',
   administrador: 'Administrador',
+  finanzas: 'Finanzas',
 };
 
 function Navbar() {
