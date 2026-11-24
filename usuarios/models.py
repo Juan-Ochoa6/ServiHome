@@ -21,6 +21,7 @@ class Perfil(models.Model):
     ROLES = [
         ('cliente', 'Cliente'),
         ('profesional', 'Profesional'),
+        ('finanzas', 'Finanzas'),
     ]
 
     ESTADOS_VERIFICACION = [

@@ -1466,9 +1466,74 @@ class DocumentoVerificacionDescargaTests(TestCase):
         respuesta = self.client.get(self.url)
 
         self.assertEqual(respuesta.status_code, 401)
+    def test_finanzas_no_puede_descargar_documentos(self):
+        usuario_finanzas = User.objects.create_user(
+            username='finanzas_doc',
+            email='finanzas_doc@servihome.test',
+            password='ClaveFinanzas123!'
+        )
 
+        perfil_finanzas = usuario_finanzas.perfil
+        perfil_finanzas.rol = 'finanzas'
+        perfil_finanzas.save(update_fields=['rol'])
+
+        documento_finanzas = DocumentoVerificacion.objects.create(
+            perfil=perfil_finanzas,
+            tipo='identidad',
+            archivo=SimpleUploadedFile(
+                'documento_finanzas.pdf',
+                b'%PDF-1.4 contenido de prueba',
+                content_type='application/pdf'
+            )
+        )
+
+        self.client.force_authenticate(user=usuario_finanzas)
+
+        respuesta = self.client.get(
+            f'/api/usuarios/documentos/'
+            f'{documento_finanzas.pk}/descargar/'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
 class DocumentosClientesTests(TestCase):
+    def test_finanzas_no_puede_consultar_documentos(self):
+        usuario_finanzas = User.objects.create_user(
+            username='finanzas_consulta',
+            password='ClaveFinanzas123!'
+        )
 
+        perfil = usuario_finanzas.perfil
+        perfil.rol = 'finanzas'
+        perfil.save(update_fields=['rol'])
+
+        self.api.force_authenticate(user=usuario_finanzas)
+
+        respuesta = self.api.get(self.url_mis_documentos)
+
+        self.assertEqual(respuesta.status_code, 403)
+
+    def test_finanzas_no_puede_subir_documentos(self):
+        usuario_finanzas = User.objects.create_user(
+            username='finanzas_carga',
+            password='ClaveFinanzas123!'
+        )
+
+        perfil = usuario_finanzas.perfil
+        perfil.rol = 'finanzas'
+        perfil.save(update_fields=['rol'])
+
+        self.api.force_authenticate(user=usuario_finanzas)
+
+        respuesta = self.api.post(
+            self.url_mis_documentos,
+            {
+                'tipo': 'identidad',
+                'archivo': self.crear_pdf()
+            },
+            format='multipart'
+        )
+
+        self.assertEqual(respuesta.status_code, 403)
     def setUp(self):
         self.api = APIClient()
 

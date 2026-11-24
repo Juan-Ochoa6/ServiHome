@@ -8,6 +8,7 @@ from rest_framework.permissions import (
     AllowAny,
     IsAuthenticated,
     IsAdminUser,
+    BasePermission,
 )
 from drf_spectacular.utils import (
     extend_schema,
@@ -1537,8 +1538,19 @@ class FacturaPDFAPIView(APIView):
         documento.build(contenido)
 
         return respuesta
+class EsAdminOFinanzas(BasePermission):
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        perfil = getattr(request.user, 'perfil', None)
+
+        return (
+            request.user.is_staff
+            or (perfil and perfil.rol == 'finanzas')
+        )
 class FinanzasResumenAPIView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [EsAdminOFinanzas]
 
     def get(self, request):
         periodo = request.query_params.get('periodo', 'mes')
@@ -1622,6 +1634,84 @@ class FinanzasResumenAPIView(APIView):
             'periodo_seleccionado': periodo,
             'datos': resultados,
         })
+
+class EstadisticasGeneralesAPIView(APIView):
+    permission_classes = [EsAdminOFinanzas]
+
+    def get(self, request):
+
+        # Solicitudes agrupadas por estado.
+        solicitudes = dict(
+            SolicitudServicio.objects
+            .values('estado')
+            .annotate(cantidad=Count('id'))
+            .values_list('estado', 'cantidad')
+        )
+
+        solicitudes_por_estado = [
+            {
+                'estado': estado,
+                'cantidad': solicitudes.get(estado, 0)
+            }
+            for estado, _ in SolicitudServicio.ESTADOS
+        ]
+
+        # Total de servicios completados.
+        servicios_completados = SolicitudServicio.objects.filter(
+            estado='completada'
+        ).count()
+
+        # Profesionales agrupados por estado de verificación.
+        profesionales = dict(
+            Perfil.objects
+            .filter(rol='profesional')
+            .values('estado_verificacion')
+            .annotate(cantidad=Count('id'))
+            .values_list('estado_verificacion', 'cantidad')
+        )
+
+        profesionales_por_verificacion = [
+            {
+                'estado': estado,
+                'cantidad': profesionales.get(estado, 0)
+            }
+            for estado, _ in Perfil.ESTADOS_VERIFICACION
+        ]
+
+        # Ofertas agrupadas por estado de aprobación.
+        ofertas = dict(
+            ServicioProfesional.objects
+            .values('estado_aprobacion')
+            .annotate(cantidad=Count('id'))
+            .values_list('estado_aprobacion', 'cantidad')
+        )
+
+        ofertas_por_estado = [
+            {
+                'estado': estado,
+                'cantidad': ofertas.get(estado, 0)
+            }
+            for estado, _ in ServicioProfesional.ESTADOS_APROBACION
+        ]
+
+        # Cinco servicios con más solicitudes.
+        servicios_mas_solicitados = list(
+            SolicitudServicio.objects
+            .values('servicio__nombre')
+            .annotate(cantidad=Count('id'))
+            .order_by('-cantidad', 'servicio__nombre')[:5]
+        )
+
+        return Response({
+            'solicitudes_por_estado': solicitudes_por_estado,
+            'servicios_completados': servicios_completados,
+            'profesionales_por_verificacion': (
+                profesionales_por_verificacion
+            ),
+            'ofertas_por_estado': ofertas_por_estado,
+            'servicios_mas_solicitados': servicios_mas_solicitados,
+        })
+
 
 class IncidenteCreateAPIView(generics.CreateAPIView):
     serializer_class = IncidenteSerializer

@@ -1122,6 +1122,11 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
                 'Tu usuario no tiene un perfil configurado.'
             )
 
+        if perfil.rol not in ['cliente', 'profesional']:
+            raise PermissionDenied(
+                'Tu rol no tiene acceso a documentos de verificación.'
+            )
+
         return DocumentoVerificacion.objects.filter(
             perfil=perfil
         ).order_by('-fecha_subida')
@@ -1134,8 +1139,12 @@ class MisDocumentosVerificacionAPIView(generics.ListCreateAPIView):
                 'Tu usuario no tiene un perfil configurado.'
             )
 
-        tipo = serializer.validated_data['tipo']
+        if perfil.rol not in ['cliente', 'profesional']:
+            raise PermissionDenied(
+                'Tu rol no tiene permiso para subir documentos.'
+            )
 
+        tipo = serializer.validated_data['tipo']
 
         if perfil.rol == 'cliente' and tipo != 'identidad':
             raise ValidationError(
@@ -1154,14 +1163,18 @@ class DocumentoVerificacionDescargaAPIView(generics.GenericAPIView):
             pk=pk
         )
 
-        # Solo el propietario o un administrador puede descargar.
-        if (
-            not request.user.is_staff
-            and documento.perfil.usuario_id != request.user.id
-        ):
-            raise PermissionDenied(
-                'No tienes permiso para descargar este documento.'
-            )
+        # Solo el administrador o el propietario cliente/profesional.
+        if not request.user.is_staff:
+            perfil = getattr(request.user, 'perfil', None)
+
+            if (
+                perfil is None
+                or perfil.rol not in ['cliente', 'profesional']
+                or documento.perfil.usuario_id != request.user.id
+            ):
+                raise PermissionDenied(
+                    'No tienes permiso para descargar este documento.'
+                )
 
         # Verificar que el archivo exista físicamente.
         if not documento.archivo or not documento.archivo.storage.exists(

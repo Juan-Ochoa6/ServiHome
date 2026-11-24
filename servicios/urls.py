@@ -27,6 +27,7 @@ from .views import (
     IncidentesAdminListAPIView,
     IncidenteAdminDetailAPIView,
     FacturaPDFAPIView,
+    EstadisticasGeneralesAPIView,
 )
 
 urlpatterns = [
@@ -180,5 +181,10 @@ urlpatterns = [
     'solicitudes/<int:pk>/',
     SolicitudDetailAPIView.as_view(),
     name='detalle-solicitud',
+    ),
+    path(
+    'admin/estadisticas/',
+    EstadisticasGeneralesAPIView.as_view(),
+    name='admin-estadisticas'
     ),
 ]
