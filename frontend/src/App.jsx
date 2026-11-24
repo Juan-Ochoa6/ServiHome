@@ -14,6 +14,7 @@ import MisServicios from './pages/MisServicios.jsx';
 import MiPortafolio from './pages/MiPortafolio.jsx';
 import MiCuenta from './pages/MiCuenta.jsx';
 import Panel from './pages/Panel.jsx';
+import Finanzas from './pages/Finanzas.jsx';
 import Login from './pages/Login.jsx';
 import Registro from './pages/Registro.jsx';
 import ConsentimientoCookies from './components/ConsentimientoCookies';
@@ -98,6 +99,14 @@ function App() {
             element={
               <RutaProtegida roles={['administrador']}>
                 <Panel />
+              </RutaProtegida>
+            }
+          />
+          <Route
+            path="/finanzas"
+            element={
+              <RutaProtegida roles={['finanzas']}>
+                <Finanzas />
               </RutaProtegida>
             }
           />

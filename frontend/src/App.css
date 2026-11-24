@@ -1123,3 +1123,133 @@ a.boton-contactar, a.boton-secundario { text-decoration: none; }
     width: 100%;
   }
 }
+
+/* ===== Panel de estadísticas ===== */
+.estadisticas-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.tarjeta-estadistica {
+  min-width: 0;
+  padding: 20px;
+}
+
+.grafica-barras {
+  display: grid;
+  gap: 18px;
+}
+
+.barra-item {
+  display: grid;
+  gap: 7px;
+}
+
+.barra-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.barra-info span {
+  color: #56645d;
+  font-size: .9rem;
+  overflow-wrap: anywhere;
+}
+
+.barra-info strong {
+  color: #24392b;
+  font-size: .95rem;
+}
+
+.barra-fondo {
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #eaf0eb;
+}
+
+.barra-fondo > span {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: #23865b;
+  transition: width .3s ease;
+}
+
+.grafica-circular-contenido {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.grafica-circular {
+  display: grid;
+  width: 180px;
+  height: 180px;
+  flex: 0 0 180px;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.grafica-circular > div {
+  display: flex;
+  width: 112px;
+  height: 112px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.grafica-circular strong {
+  color: #23865b;
+  font-size: 1.7rem;
+}
+
+.grafica-circular span {
+  color: #65736b;
+  font-size: .78rem;
+}
+
+.leyenda-grafica {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.leyenda-grafica li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #56645d;
+  font-size: .88rem;
+}
+
+.leyenda-grafica li strong {
+  margin-left: auto;
+  color: #24392b;
+}
+
+.leyenda-color {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  border-radius: 3px;
+}
+
+@media (max-width: 700px) {
+  .estadisticas-grid {
+    grid-template-columns: 1fr;
+  }
+}

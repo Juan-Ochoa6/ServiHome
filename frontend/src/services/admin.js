@@ -66,3 +66,8 @@ export function actualizarIncidente(id, estado, respuesta) {
 export function obtenerFinanzas(periodo) {
   return peticionAutenticada(`/admin/finanzas/?periodo=${encodeURIComponent(periodo)}`);
 }
+
+ // ----- Estadísticas generales -----
+export function obtenerEstadisticasGenerales() {
+  return peticionAutenticada('/admin/estadisticas/');
+}
