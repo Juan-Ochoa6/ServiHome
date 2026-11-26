@@ -7,78 +7,105 @@
 - **Commit auditado:** `c579d28`
 - **Commit de integración:** `0897ddb`
 - **Fecha de auditoría:** 26 de noviembre de 2026
-- **Entorno:** entorno local de auditoría, separado del repositorio de trabajo original.
+- **Entorno:** entorno local de auditoría, aislado mediante Git worktree.
 - **Alcance:** backend, frontend, permisos, autenticación, panel financiero, estadísticas y migraciones relacionadas con el PR.
 
 ## 2. Objetivo
 
-Verificar el funcionamiento y la integración de las funcionalidades incorporadas en el PR #22, especialmente el panel financiero, las estadísticas generales y el acceso diferenciado según el rol del usuario.
+Evaluar la implementación incorporada en el PR #22, centrándose en el panel financiero, las estadísticas generales y el acceso diferenciado según el rol del usuario.
 
-También se revisaron las pruebas automatizadas, la protección de rutas y la coherencia entre las respuestas del backend y los componentes del frontend.
+La auditoría incluyó ejecución de pruebas automatizadas, comprobaciones de autorización, recorridos funcionales en navegador y revisión estática del código.
+
+El alcance de las conclusiones se limita a las actividades efectivamente ejecutadas. No representa una certificación integral del sistema.
 
 ## 3. Entorno y herramientas utilizadas
 
 - Git y Git worktree para mantener aislado el código auditado.
 - Python y Django para ejecutar el backend y las pruebas.
+- Django REST Framework.
 - MySQL como base de datos local de QA.
 - Node.js, npm y Vite para ejecutar el frontend.
-- Brave para las pruebas de navegación.
-- PowerShell para inspección, ejecución de comandos y revisión de resultados.
-- Herramientas de desarrollo del navegador para comprobar la sesión y el comportamiento de la aplicación.
+- Brave y herramientas de desarrollo del navegador.
+- PowerShell para inspección y ejecución de comandos.
 
 No se incluyen contraseñas, tokens, claves secretas ni datos sensibles en esta documentación.
 
 ## 4. Actividades y resultados
 
-### 4.1. Revisión inicial del código
+Para interpretar los resultados se utilizan estas categorías:
 
-Se revisaron los archivos modificados por el PR, las rutas del backend, las vistas financieras y de estadísticas, los modelos, las migraciones y los componentes del frontend.
+- **APROBADA:** prueba ejecutada y resultado esperado observado.
+- **PARCIAL:** se comprobó una parte del comportamiento, pero no el flujo completo.
+- **REVISIÓN ESTÁTICA:** inspección de código o configuración sin validar integralmente su ejecución.
+- **NO VERIFICADA:** no existe evidencia suficiente para confirmar el comportamiento.
+- **PENDIENTE:** requiere una actividad adicional.
 
-**Resultado:** no se encontraron inconsistencias funcionales demostradas en la revisión realizada.
+### 4.1. Revisión del código
 
-### 4.2. Verificación de configuración
+Se inspeccionaron archivos modificados por el PR, vistas, rutas, permisos, modelos, migraciones, pruebas automatizadas y componentes del frontend.
 
-Se ejecutó:
+**Clasificación: REVISIÓN ESTÁTICA.**
+
+Se revisó la correspondencia entre rutas, permisos, vistas y componentes. Esta actividad no demuestra que todos los flujos funcionen correctamente ni sustituye las pruebas de integración.
+
+### 4.2. Comprobaciones de configuración y Git
+
+Se ejecutaron:
 
 - `python manage.py check`
 - `git diff --check 354dba7..c579d28`
 
-**Resultado:**
-- Django no reportó problemas en la configuración.
+Resultados:
+- Django no reportó problemas en la comprobación de configuración.
 - Git no reportó errores de espacios en blanco en las diferencias revisadas.
+
+**Clasificación: APROBADA para las comprobaciones ejecutadas.**
+
+Estas comprobaciones no representan una validación funcional de los endpoints.
 
 ### 4.3. Pruebas automatizadas
 
-Se ejecutaron pruebas específicas y posteriormente la suite completa del proyecto.
+Se ejecutaron pruebas específicas y posteriormente la suite completa existente.
 
-**Resultados registrados:**
+Resultados:
 - 20 pruebas específicas aprobadas.
-- Suite completa: 147 pruebas aprobadas.
+- 147 pruebas aprobadas en la suite completa.
 - Tiempo registrado para la suite completa: 378.167 segundos.
 - Resultado final: `OK`.
 
-Durante la primera ejecución de la suite completa se presentaron fallos relacionados con la configuración de `FERNET_KEY`. Después de configurar la variable localmente, la ejecución completa terminó correctamente.
+La primera ejecución completa presentó fallos relacionados con la configuración de `FERNET_KEY` en el entorno local. Después de configurar la variable, la suite terminó correctamente.
 
-### 4.4. Pruebas de permisos y roles
+**Clasificación: APROBADA para las pruebas existentes ejecutadas.**
 
-Se revisó la clase `EsAdminOFinanzas` y la protección de las vistas financieras y de estadísticas.
+La ejecución satisfactoria no demuestra que todos los escenarios del PR estén cubiertos. En particular, no sustituye los casos específicos pendientes para estadísticas, permisos del rol Finanzas e integración de endpoints.
 
-Se comprobaron las respuestas de autorización para los siguientes perfiles:
+### 4.4. Comprobaciones de autorización del backend
 
-| Perfil | Resultado esperado | Resultado observado |
-|---|---|---|
-| Administrador | Acceso permitido | 200 en la comprobación de autorización |
-| Finanzas | Acceso permitido | 200 en la comprobación de autorización |
-| Cliente | Acceso denegado | 403 |
-| Usuario anónimo | Acceso denegado | 401 |
+Se revisó la clase `EsAdminOFinanzas` y se realizaron comprobaciones con `APIRequestFactory` para:
 
-Nota: las comprobaciones HTTP de autorización se realizaron con `APIRequestFactory` y la ejecución de los métodos GET fue simulada. No deben interpretarse como una prueba completa de los datos devueltos por ambas vistas.
+- `GET /api/admin/finanzas/`
+- `GET /api/admin/estadisticas/`
 
-### 4.5. Prueba funcional del panel financiero
+Resultados observados:
 
-Se inició el backend y el frontend localmente y se accedió con un usuario administrador de QA.
+| Perfil | Código HTTP |
+|---|---:|
+| Administrador | 200 |
+| Finanzas | 200 |
+| Cliente | 403 |
+| Usuario anónimo | 401 |
 
-Se verificaron los siguientes valores:
+**Clasificación: PARCIAL.**
+
+Los GET fueron simulados y las comprobaciones se enfocaron en la autorización. No se validaron las respuestas reales de ambos endpoints, sus estructuras JSON ni sus cálculos.
+
+Por tanto, estos resultados no deben interpretarse como pruebas de integración completas.
+
+### 4.5. Panel financiero
+
+Se inició el backend y el frontend localmente y se ingresó con un usuario administrador de QA.
+
+Se observaron los siguientes valores en la base de datos local:
 
 | Indicador | Valor observado |
 |---|---:|
@@ -87,98 +114,173 @@ Se verificaron los siguientes valores:
 | Total para profesionales | $45.000 |
 | Pagos confirmados | 1 |
 
-También se comprobó que los valores se mantenían coherentes al agrupar la información por:
+También se seleccionaron las agrupaciones por día, semana, mes y año, observando la presentación de información al cambiar de opción.
 
-- Día.
-- Semana.
-- Mes.
-- Año.
+**Clasificación: PARCIAL.**
 
-**Resultado:** el panel presentó la información esperada para los datos existentes en la base de QA.
+Se comprobó la visualización del panel y el comportamiento observado al seleccionar agrupaciones. No se realizó una comparación independiente y exhaustiva de todos los cálculos con resultados de referencia.
 
-### 4.6. Prueba funcional del panel de estadísticas
+Los valores registrados corresponden exclusivamente a los datos existentes en la base de QA utilizada.
 
-Se creó, con autorización, el usuario de QA `finanzas_qa1`, con rol `finanzas`, para comprobar el acceso al panel.
+### 4.6. Panel de estadísticas
 
-Se completó su configuración inicial de MFA y se ingresó a `/finanzas`.
+Se utilizó el usuario local de QA `finanzas_qa1`, con rol `finanzas`. Se completó su configuración inicial de MFA y se accedió a `/finanzas`.
 
-Se observaron los indicadores de solicitudes, profesionales, ofertas y servicios más solicitados.
+Se observó la presentación de indicadores relacionados con solicitudes, profesionales, ofertas y servicios más solicitados.
 
-**Resultado:** el panel cargó y presentó los indicadores disponibles en la base de datos de QA.
+**Clasificación: PARCIAL.**
 
-### 4.7. Pruebas de autenticación y protección de rutas
+Se comprobó la carga y visualización del panel. No se contrastó exhaustivamente cada indicador con consultas independientes a la base de datos ni se validaron todos los cálculos del backend.
 
-Se revisaron el inicio de sesión, la configuración inicial de MFA, la verificación del código, la generación de JWT, la recuperación de sesión y el cierre de sesión.
+La visualización de los indicadores no demuestra por sí sola su exactitud.
 
-También se comprobó en el navegador:
+### 4.7. Autenticación y protección de rutas
 
-- El usuario con rol `finanzas` puede acceder a `/finanzas`.
-- Al intentar entrar a `/panel`, la aplicación lo redirige.
-- El rol se conserva en la sesión y se utiliza en la protección de rutas.
+Se completó con el usuario de QA el proceso de configuración inicial de MFA y acceso a la aplicación.
 
-**Resultado:** el comportamiento observado coincide con la separación de roles implementada.
+También se observó:
+- Acceso a `/finanzas` con el rol `finanzas`.
+- Redirección desde `/panel` hacia `/` con ese mismo rol.
+
+Se inspeccionaron `AuthProvider.jsx`, `RutaProtegida.jsx` y los componentes relacionados con la sesión.
+
+**Clasificación: PARCIAL.**
+
+Se completaron los recorridos indicados y se revisó estáticamente la protección de rutas. No se considera validado exhaustivamente el conjunto de escenarios de autenticación, expiración de tokens, concurrencia, recuperación de sesión y errores de MFA.
 
 ### 4.8. Revisión de migraciones
 
-Se identificaron dos migraciones pendientes en el entorno local:
+Se identificaron dos migraciones pendientes:
 
 - `servicios.0013_pago_comprobante`
 - `usuarios.0014_alter_perfil_rol`
 
-Se revisó su contenido y el plan de ejecución.
+Se inspeccionaron sus archivos y se revisó el plan de ejecución. También se ejecutó `makemigrations --check --dry-run`, que indicó `No changes detected`.
 
-También se ejecutó `makemigrations --check --dry-run`, que indicó que no había cambios adicionales pendientes de generar.
+**Clasificación: REVISIÓN ESTÁTICA.**
 
-**Importante:** las migraciones no se aplicaron durante esta auditoría. Por tanto, no se considera validado su comportamiento mediante una ejecución real sobre una base independiente.
+Las migraciones no se aplicaron durante esta auditoría. Por tanto, no se verificó su ejecución real ni el estado del esquema después de aplicarlas.
 
-## 5. Hallazgos y oportunidades de mejora
+## 5. Hallazgos y pendientes del backend
 
-### QA-PR22-01 – Falta de pruebas específicas para estadísticas
+Los siguientes puntos representan deficiencias de cobertura o validaciones pendientes. No constituyen por sí solos defectos funcionales demostrados.
 
-**Tipo:** oportunidad de mejora de cobertura.
+### BACK-01 – Falta de pruebas automatizadas específicas para estadísticas
+
+**Endpoint:** `GET /api/admin/estadisticas/`
+
+**Estado: NO VERIFICADO mediante pruebas automatizadas específicas.**
 
 No se encontraron pruebas automatizadas específicas para `EstadisticasGeneralesAPIView`.
 
-Se recomienda agregar casos que validen los conteos por estado, los profesionales por verificación, las ofertas por aprobación y los servicios más solicitados.
+Se recomienda agregar casos que comprueben:
 
-### QA-PR22-02 – Falta de prueba explícita del rol finanzas en FinanzasTests
+- Cantidad de servicios completados.
+- Cantidad de solicitudes por estado.
+- Cantidad de profesionales por estado de verificación.
+- Cantidad de ofertas por estado de aprobación.
+- Servicios más solicitados.
+- Respuesta cuando no existen registros.
+- Restricciones de acceso según el rol.
 
-**Tipo:** oportunidad de mejora de cobertura.
+**Criterio de cierre:** las pruebas deben contrastar los valores devueltos por el endpoint con datos de prueba conocidos.
 
-La clase `FinanzasTests` contempla administrador, cliente y usuario anónimo, pero no se encontró un caso específico para el rol `finanzas`.
+### BACK-02 – Falta de prueba explícita del rol Finanzas en FinanzasTests
 
-Se recomienda incorporar una prueba automatizada que verifique que este rol puede consultar el resumen financiero.
+**Endpoint:** `GET /api/admin/finanzas/`
 
-### QA-PR22-03 – Comentario incompleto de roles
+**Estado: NO CUBIERTO explícitamente en `FinanzasTests`.**
 
-**Tipo:** observación menor.
+En la revisión de la clase se encontraron casos para administrador, cliente y usuario anónimo, pero no un caso específico para el rol `finanzas`.
+
+Se recomienda agregar una prueba que compruebe:
+- Acceso permitido para un usuario autenticado con rol `finanzas`.
+- Estructura y valores esperados de la respuesta.
+- Acceso denegado para cliente.
+- Acceso denegado para usuario anónimo.
+
+**Criterio de cierre:** prueba automatizada ejecutada con un usuario cuyo rol sea `finanzas`.
+
+### BACK-03 – Falta de pruebas de integración reales de los endpoints
+
+**Endpoints:**
+- `GET /api/admin/finanzas/`
+- `GET /api/admin/estadisticas/`
+
+**Estado: PARCIAL.**
+
+Las comprobaciones realizadas con `APIRequestFactory` se limitaron a autorización y utilizaron GET simulados.
+
+Falta ejecutar pruebas de integración que comprueben:
+- Códigos HTTP.
+- Estructura y tipos de los campos JSON.
+- Valores devueltos con registros de prueba controlados.
+- Cálculos financieros.
+- Conteos y agrupaciones de estadísticas.
+- Acceso permitido y denegado según el rol.
+
+**Criterio de cierre:** pruebas que ejecuten las vistas y validen sus respuestas con datos controlados.
+
+### BACK-04 – Falta de aplicación y validación de migraciones
+
+**Migraciones identificadas:**
+- `servicios.0013_pago_comprobante`
+- `usuarios.0014_alter_perfil_rol`
+
+**Estado: NO VERIFICADO mediante aplicación real.**
+
+Se inspeccionaron los archivos y el plan de ejecución, pero las migraciones no se aplicaron durante esta auditoría.
+
+Falta:
+- Aplicarlas en una base de datos independiente.
+- Comprobar que finalizan sin errores.
+- Verificar los cambios de esquema.
+- Comprobar que los modelos funcionan después de la migración.
+
+**Criterio de cierre:** evidencia de aplicación exitosa y comprobaciones posteriores en una base de datos de prueba.
+
+### BACK-05 – Ejecución de la suite automatizada existente
+
+**Estado: APROBADA en el entorno local utilizado.**
+
+La suite existente terminó con 147 pruebas aprobadas después de configurar `FERNET_KEY`.
+
+Este resultado acredita la ejecución satisfactoria de las pruebas disponibles. No cierra los pendientes BACK-01, BACK-02 ni BACK-03, porque no demuestra que existan los casos específicos requeridos.
+
+### QA-PR22-06 – Comentario incompleto de roles en frontend
+
+**Tipo:** observación menor de documentación interna.
 
 En `frontend/src/auth/AuthProvider.jsx`, un comentario enumera los roles cliente, profesional y administrador, pero omite el rol `finanzas`.
 
-El código sí admite el rol; se recomienda actualizar únicamente el comentario para mantener la documentación interna coherente.
+Se recomienda actualizar el comentario para mantener la documentación interna coherente. La observación corresponde al comentario, no a un defecto funcional demostrado del mecanismo de autenticación.
 
 ## 6. Aspectos fuera del alcance
 
-- El campo `Pago.comprobante` y su migración ya existían antes del PR #22 y no fueron introducidos por este cambio.
-- La integración con Mercado Pago corresponde a un commit posterior, fuera del alcance de esta auditoría.
-- No se aplicaron migraciones.
-- No se realizó una prueba de despliegue en un entorno de producción.
+- El campo `Pago.comprobante` y su migración son anteriores al PR #22 y no deben atribuirse a este cambio.
+- La integración con Mercado Pago corresponde a un commit posterior y quedó fuera del alcance.
+- No se aplicaron las migraciones identificadas.
+- No se realizó una prueba de despliegue en producción.
 - Las vulnerabilidades moderadas reportadas por npm requieren una revisión independiente. No se ejecutó `npm audit fix`.
 
 ## 7. Conclusión
 
-Durante la auditoría se revisaron el backend y el frontend, se ejecutaron 147 pruebas automatizadas y se realizaron pruebas funcionales de los paneles financiero y de estadísticas con usuarios de QA.
+Durante la auditoría se ejecutaron pruebas automatizadas, comprobaciones de autorización, recorridos funcionales en navegador y revisión estática del código.
 
-Se verificaron los cálculos financieros disponibles, los filtros de agrupación, el acceso por roles, la autenticación MFA y la protección de rutas.
+La suite automatizada existente finalizó con 147 pruebas aprobadas, después de configurar `FERNET_KEY` en el entorno local.
 
-**No se identificaron defectos funcionales demostrados dentro del alcance revisado.**
+Se observó la visualización de los paneles financiero y de estadísticas con los datos disponibles en la base de QA. También se realizaron comprobaciones parciales de autorización y se completó un recorrido de configuración inicial de MFA con un usuario de QA.
 
-Se documentaron oportunidades de mejora relacionadas con la cobertura automatizada de estadísticas y del rol finanzas, además de una observación menor en un comentario del frontend.
+Sin embargo, no se completó una validación de integración de los endpoints financieros y de estadísticas con comprobación exhaustiva de sus respuestas y cálculos. Tampoco se aplicaron las migraciones en una base de datos independiente.
 
-La conclusión se limita a las verificaciones realizadas y no representa una certificación de ausencia total de errores.
+Por tanto, los resultados permiten documentar los escenarios ejecutados, pero no certificar el funcionamiento integral del backend ni la ausencia de defectos.
+
+Los pendientes BACK-01 a BACK-04 requieren seguimiento antes de considerar completa la validación del backend del PR #22.
 
 ## 8. Estado de auditoría
 
-**Resultado:** sin defectos funcionales demostrados en el alcance revisado.
+**Resultado:** pruebas existentes aprobadas y funcionamiento observado parcialmente en los escenarios ejecutados.
 
-**Recomendación:** conservar este informe como evidencia de QA y registrar las oportunidades de mejora para su seguimiento.
+**Pendientes principales:** cobertura automatizada de estadísticas, prueba explícita del rol Finanzas, integración real de endpoints y validación de migraciones.
+
+**Recomendación:** mantener los pendientes registrados y solicitar evidencia de su cierre antes de considerar completa la validación del backend.
