@@ -1,12 +1,76 @@
-
+import base64
+import json
 import logging
 import threading
+import urllib.parse
+import urllib.request
+
+from email.mime.text import MIMEText
 
 from django.conf import settings
-from django.core.mail import send_mail
 from django.db import close_old_connections, connections
 
+
 logger = logging.getLogger(__name__)
+
+
+def obtener_access_token():
+    datos = urllib.parse.urlencode({
+        'client_id': settings.GMAIL_CLIENT_ID,
+        'client_secret': settings.GMAIL_CLIENT_SECRET,
+        'refresh_token': settings.GMAIL_REFRESH_TOKEN,
+        'grant_type': 'refresh_token',
+    }).encode('utf-8')
+
+    solicitud = urllib.request.Request(
+        'https://oauth2.googleapis.com/token',
+        data=datos,
+        headers={
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        method='POST',
+    )
+
+    with urllib.request.urlopen(solicitud, timeout=15) as respuesta:
+        resultado = json.loads(respuesta.read().decode('utf-8'))
+
+    return resultado['access_token']
+
+
+def enviar_por_gmail_api(destinatario, asunto, mensaje):
+    access_token = obtener_access_token()
+
+    correo = MIMEText(mensaje, 'plain', 'utf-8')
+    correo['To'] = destinatario
+    correo['From'] = settings.DEFAULT_FROM_EMAIL
+    correo['Subject'] = asunto
+
+    correo_codificado = base64.urlsafe_b64encode(
+        correo.as_bytes()
+    ).decode('ascii').rstrip('=')
+
+    datos = json.dumps({
+        'raw': correo_codificado,
+    }).encode('utf-8')
+
+    solicitud = urllib.request.Request(
+        'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
+        data=datos,
+        headers={
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json',
+        },
+        method='POST',
+    )
+
+    with urllib.request.urlopen(solicitud, timeout=15) as respuesta:
+        resultado = json.loads(respuesta.read().decode('utf-8'))
+
+    logger.info(
+        'Correo enviado correctamente a %s. ID: %s',
+        destinatario,
+        resultado.get('id'),
+    )
 
 
 def enviar_correo(destinatario, asunto, mensaje):
@@ -20,23 +84,15 @@ def enviar_correo(destinatario, asunto, mensaje):
         close_old_connections()
 
         try:
-            resultado = send_mail(
-                subject=asunto,
-                message=mensaje,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[destinatario],
-                fail_silently=False,
+            enviar_por_gmail_api(
+                destinatario,
+                asunto,
+                mensaje,
             )
-
-            if resultado != 1:
-                logger.warning(
-                    'No se pudo confirmar el envío del correo a %s',
-                    destinatario,
-                )
 
         except Exception:
             logger.exception(
-                'Error al enviar correo a %s',
+                'Error al enviar correo mediante Gmail API a %s',
                 destinatario,
             )
 

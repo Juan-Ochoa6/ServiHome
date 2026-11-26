@@ -16,3 +16,6 @@ verificacion_profesionales/
 media/
 
 private_media/
+
+# Credenciales privadas de Google
+credenciales/
