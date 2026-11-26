@@ -1380,13 +1380,13 @@ class PagoMercadoPagoCreateAPIView(APIView):
                 'config': {
                     'online': {
                         'success_url': (
-                            f'{settings.FRONTEND_URL}/pago/exitoso'
+                            f'{settings.FRONTEND_URL}/pago/exitoso?pago_id={pago.id}'
                         ),
                         'pending_url': (
-                            f'{settings.FRONTEND_URL}/pago/pendiente'
+                            f'{settings.FRONTEND_URL}/pago/pendiente?pago_id={pago.id}'
                         ),
                         'failure_url': (
-                            f'{settings.FRONTEND_URL}/pago/fallido'
+                            f'{settings.FRONTEND_URL}/pago/fallido?pago_id={pago.id}'
                         ),
                         'auto_return': 'approved'
                     }
