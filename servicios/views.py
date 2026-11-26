@@ -75,6 +75,9 @@ from .serializers import (
 import mercadopago
 import uuid
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 def exigir_profesional_aprobado(perfil):
     if (
@@ -1399,6 +1402,21 @@ class PagoMercadoPagoCreateAPIView(APIView):
             )
 
             if not respuesta.is_success:
+                detalle = respuesta.get('response', {})
+
+                if not isinstance(detalle, dict):
+                    detalle = {}
+
+                logger.warning(
+                    'Mercado Pago rechazó la orden. '
+                    'pago_id=%s status=%s error=%s message=%s cause=%s',
+                    pago.id,
+                    respuesta.status_code,
+                    detalle.get('error'),
+                    detalle.get('message'),
+                    detalle.get('cause')
+                )
+
                 return Response(
                     {
                         'error': 'No fue posible crear la orden de pago.',
@@ -1434,7 +1452,14 @@ class PagoMercadoPagoCreateAPIView(APIView):
                 'checkout_url': checkout_url
             }, status=status.HTTP_201_CREATED)
 
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                'Excepción al crear orden en Mercado Pago. '
+                'pago_id=%s tipo=%s',
+                pago.id,
+                type(exc).__name__
+            )
+
             return Response(
                 {'error': 'Error al comunicarse con Mercado Pago.'},
                 status=status.HTTP_502_BAD_GATEWAY
